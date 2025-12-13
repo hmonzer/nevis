@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.database.database import Database
 from src.shared.database.entity_mapper import EntityMapper
@@ -13,21 +13,20 @@ class UnitOfWork:
         entity_mapper: EntityMapper,
     ) -> None:
         self.db = db
-        self.session: Session
+        self.session: AsyncSession
         self.entity_mapper = entity_mapper
 
-    def __enter__(self):
-        with self.db.session_maker() as self.session:
-            # self.session.expire_on_commit = False
-            return self
+    async def __aenter__(self):
+        self.session = self.db.session_maker()
+        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            self.commit()
+            await self.commit()
         else:
-            self.rollback()
+            await self.rollback()
         if self.session:
-            self.session.close()
+            await self.session.close()
 
     def _map_to_entity(self, model_instance: Any):
         return self.entity_mapper.map_to_entity(model_instance)
@@ -36,20 +35,20 @@ class UnitOfWork:
         entity = self._map_to_entity(model_instance)
         self.session.add(entity)
 
-    def update(self, model_instance: Any):
+    async def update(self, model_instance: Any):
         entity = self._map_to_entity(model_instance)
-        self.session.merge(entity)
+        await self.session.merge(entity)
 
     def delete(self, model_instance: Any):
         entity = self._map_to_entity(model_instance)
         self.session.delete(entity)
 
-    def commit(self):
+    async def commit(self):
         try:
-            self.session.commit()
+            await self.session.commit()
         except Exception as e:
-            self.rollback()
+            await self.rollback()
             raise e
 
-    def rollback(self):
-        self.session.rollback()
+    async def rollback(self):
+        await self.session.rollback()
