@@ -8,7 +8,7 @@ from testcontainers.postgres import PostgresContainer
 from src.shared.database.database import Database, Base
 from src.shared.database.database_settings import DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
-from tests.shared.database.mock_entities import UserModel, get_test_entity_mapper
+from tests.shared.database.mock_entities import UserModel, UserMapper, get_test_entity_mapper
 from tests.shared.database.mock_repository import UserRepository
 
 
@@ -57,7 +57,7 @@ async def clean_database(db):
 @pytest.fixture
 def user_repository(clean_database):
     """Create a user repository."""
-    return UserRepository(clean_database)
+    return UserRepository(clean_database, UserMapper())
 
 
 @pytest.fixture
