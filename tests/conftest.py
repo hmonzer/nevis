@@ -165,6 +165,8 @@ async def clean_database(db):
     async with db._engine.begin() as conn:
         # Enable pgvector extension
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Enable pg_trgm extension for fuzzy search
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
 
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)

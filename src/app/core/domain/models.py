@@ -1,4 +1,5 @@
 """Domain models used in business logic."""
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -8,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class Client(BaseModel):
     """Domain model for Client used in business logic."""
-    id: UUID
+    id: UUID = Field(default_factory=uuid.uuid4, description="Unique client ID")
     first_name: str = Field(..., min_length=1, description="First name cannot be blank")
     last_name: str = Field(..., min_length=1, description="Last name cannot be blank")
     email: EmailStr = Field(..., description="Email address is required")

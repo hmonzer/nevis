@@ -19,6 +19,8 @@ async def lifespan(app: FastAPI):
     async with db._engine.begin() as conn:
         # Enable pgvector extension
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Enable pg_trgm extension for fuzzy search
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
 
         # Create all tables
         from src.shared.database.database import Base

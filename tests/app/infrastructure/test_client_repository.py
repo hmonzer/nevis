@@ -40,8 +40,7 @@ async def test_get_client_by_id(client_repository, unit_of_work):
         first_name="John",
         last_name="Doe",
         email=EmailStr("john.doe@example.com"),
-        description="Test client",
-        created_at=datetime.now(UTC)
+        description="Test client"
     )
 
     # Persist the client
@@ -76,12 +75,10 @@ async def test_get_client_by_email(client_repository, unit_of_work):
     """Test retrieving a client by email."""
     # Arrange - Create a client
     client = Client(
-        id=uuid4(),
         first_name="Jane",
         last_name="Smith",
         email=EmailStr("jane.smith@example.com"),
-        description="Test client",
-        created_at=datetime.now(UTC)
+        description="Test client"
     )
 
     # Persist the client
@@ -107,3 +104,226 @@ async def test_get_client_by_email_not_found(client_repository):
 
     # Assert
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_search_by_email_partial_match(client_repository, unit_of_work):
+    """Test searching for clients by partial email match."""
+    # Arrange - Create clients
+    client1 = Client(
+        first_name="John",
+        last_name="Doe",
+        email=EmailStr("john.doe@neviswealth.com"),
+        description="Wealth management client"
+    )
+    client2 = Client(
+        first_name="Jane",
+        last_name="Smith",
+        email=EmailStr("jane.smith@example.com"),
+        description="Regular client"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client1)
+        unit_of_work.add(client2)
+
+    # Act - Search for "NevisWealth" which should match "john.doe@neviswealth.com"
+    results = await client_repository.search("NevisWealth")
+
+    # Assert
+    assert len(results) == 1
+    assert results[0].email == "john.doe@neviswealth.com"
+    assert results[0].first_name == "John"
+
+
+@pytest.mark.asyncio
+async def test_search_by_first_name(client_repository, unit_of_work):
+    """Test searching for clients by first name."""
+    # Arrange
+    client1 = Client(
+        first_name="Alexander",
+        last_name="Johnson",
+        email=EmailStr("alex.johnson@example.com"),
+        description="Client A"
+    )
+    client2 = Client(
+        first_name="Alexandra",
+        last_name="Williams",
+        email=EmailStr("alexandra.williams@example.com"),
+        description="Client B"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client1)
+        unit_of_work.add(client2)
+
+    # Act - Search for "Alex" which should match both Alexander and Alexandra
+    results = await client_repository.search("Alex")
+
+    # Assert - Both should be found
+    assert len(results) == 2
+    first_names = {client.first_name for client in results}
+    assert "Alexander" in first_names
+    assert "Alexandra" in first_names
+
+
+@pytest.mark.asyncio
+async def test_search_by_last_name(client_repository, unit_of_work):
+    """Test searching for clients by last name."""
+    # Arrange
+    client = Client(
+        first_name="Michael",
+        last_name="O'Brien",
+        email=EmailStr("michael.ob@example.com"),
+        description="Test client"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client)
+
+    # Act - Search for "OBrien" which should match "O'Brien"
+    results = await client_repository.search("OBrien")
+
+    # Assert
+    assert len(results) == 1
+    assert results[0].last_name == "O'Brien"
+
+
+@pytest.mark.asyncio
+async def test_search_by_description(client_repository, unit_of_work):
+    """Test searching for clients by description."""
+    # Arrange
+    client1 = Client(
+        first_name="Sarah",
+        last_name="Connor",
+        email=EmailStr("sarah.connor@example.com"),
+        description="Technology sector executive"
+    )
+    client2 = Client(
+        first_name="John",
+        last_name="Smith",
+        email=EmailStr("john.smith@example.com"),
+        description="Real estate investor"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client1)
+        unit_of_work.add(client2)
+
+    # Act - Search for "technology"
+    results = await client_repository.search("technology")
+
+    # Assert
+    assert len(results) == 1
+    assert results[0].first_name == "Sarah"
+    assert "Technology" in results[0].description
+
+
+@pytest.mark.asyncio
+async def test_search_with_null_description(client_repository, unit_of_work):
+    """Test searching for clients when some have null descriptions."""
+    # Arrange
+    client1 = Client(
+        first_name="Robert",
+        last_name="Taylor",
+        email=EmailStr("robert.taylor@example.com"),
+        description=None,  # Null descriptio
+    )
+    client2 = Client(
+        first_name="Emily",
+        last_name="Davis",
+        email=EmailStr("emily.davis@example.com"),
+        description="Financial advisor"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client1)
+        unit_of_work.add(client2)
+
+    # Act - Search for "Robert" (should match first name despite null description)
+    results = await client_repository.search("Robert")
+
+    # Assert
+    assert len(results) == 1
+    assert results[0].first_name == "Robert"
+    assert results[0].description is None
+
+
+@pytest.mark.asyncio
+async def test_search_no_matches(client_repository, unit_of_work):
+    """Test searching with a query that has no matches."""
+    # Arrange
+    client = Client(
+        first_name="David",
+        last_name="Wilson",
+        email=EmailStr("david.wilson@example.com"),
+        description="Portfolio manager"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client)
+
+    # Act - Search for something completely unrelated
+    results = await client_repository.search("xyzabc123")
+
+    # Assert
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_search_orders_by_relevance(client_repository, unit_of_work):
+    """Test that search results are ordered by relevance (highest similarity first)."""
+    # Arrange - Create clients with varying similarity to search term
+    client1 = Client(
+        first_name="Christopher",
+        last_name="Anderson",
+        email=EmailStr("christopher.anderson@example.com"),
+        description="Investment banker"
+    )
+    client2 = Client(
+        first_name="Chris",
+        last_name="Martin",
+        email=EmailStr("chris.martin@example.com"),
+        description="Trader"
+    )
+    client3 = Client(
+        first_name="Christine",
+        last_name="Brown",
+        email=EmailStr("christine.brown@example.com"),
+        description="Analyst"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client1)
+        unit_of_work.add(client2)
+        unit_of_work.add(client3)
+
+    # Act - Search for "Chris" - exact match should be first
+    results = await client_repository.search("Chris")
+
+    # Assert - "Chris" should be first (exact match), others follow
+    assert len(results) >= 1
+    assert results[0].first_name == "Chris"
+
+
+@pytest.mark.asyncio
+async def test_search_with_custom_threshold(client_repository, unit_of_work):
+    """Test search with custom similarity threshold."""
+    # Arrange
+    client = Client(
+        first_name="William",
+        last_name="Taylor",
+        email=EmailStr("william.taylor@example.com"),
+        description="Consultant"
+    )
+
+    async with unit_of_work:
+        unit_of_work.add(client)
+
+    # Act - Search with very high threshold (strict matching)
+    results_strict = await client_repository.search("Will", threshold=0.5)
+    # Search with low threshold (loose matching)
+    results_loose = await client_repository.search("Will", threshold=0.1)
+
+    # Assert - Loose threshold should find more or equal results
+    assert len(results_loose) > len(results_strict)
