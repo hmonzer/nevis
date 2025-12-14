@@ -3,7 +3,12 @@ from uuid import UUID
 from typing import Optional
 from httpx import AsyncClient, Response
 
-from src.client.schemas import CreateClientRequest, ClientResponse
+from src.client.schemas import (
+    CreateClientRequest,
+    ClientResponse,
+    CreateDocumentRequest,
+    DocumentResponse,
+)
 
 
 class NevisClient:
@@ -75,3 +80,67 @@ class NevisClient:
         response: Response = await self.client.get(f"/api/v1/clients/{client_id}")
         response.raise_for_status()
         return ClientResponse(**response.json())
+
+    async def upload_document(
+        self, client_id: UUID, request: CreateDocumentRequest
+    ) -> DocumentResponse:
+        """
+        Upload a document for a client.
+
+        Args:
+            client_id: UUID of the client
+            request: Document creation request
+
+        Returns:
+            Created document response
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        response: Response = await self.client.post(
+            f"/api/v1/clients/{client_id}/documents/",
+            json=request.model_dump(mode="json"),
+        )
+        response.raise_for_status()
+        return DocumentResponse(**response.json())
+
+    async def get_document(
+        self, client_id: UUID, document_id: UUID
+    ) -> DocumentResponse:
+        """
+        Get a document by ID for a client.
+
+        Args:
+            client_id: UUID of the client
+            document_id: UUID of the document
+
+        Returns:
+            Document response
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        response: Response = await self.client.get(
+            f"/api/v1/clients/{client_id}/documents/{document_id}"
+        )
+        response.raise_for_status()
+        return DocumentResponse(**response.json())
+
+    async def list_documents(self, client_id: UUID) -> list[DocumentResponse]:
+        """
+        List all documents for a client.
+
+        Args:
+            client_id: UUID of the client
+
+        Returns:
+            List of document responses
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        response: Response = await self.client.get(
+            f"/api/v1/clients/{client_id}/documents/"
+        )
+        response.raise_for_status()
+        return [DocumentResponse(**doc) for doc in response.json()]

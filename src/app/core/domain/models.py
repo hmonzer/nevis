@@ -36,6 +36,12 @@ class Document(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    def processed(self) -> None:
+        self.status = DocumentStatus.PROCESSED
+
+    def failed(self) -> None:
+        self.status = DocumentStatus.FAILED
+
 
 class DocumentChunk(BaseModel):
     """Domain model for DocumentChunk used in business logic."""

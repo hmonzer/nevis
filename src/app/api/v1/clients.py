@@ -5,6 +5,7 @@ from src.app.core.services.client_service import ClientService
 from src.client.schemas import CreateClientRequest, ClientResponse
 from src.app.api.dependencies import get_client_service
 from src.app.api.mappers import to_client_response
+from src.shared.exceptions import EntityNotFound
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -31,5 +32,5 @@ async def get_client(
     try:
         client = await service.get_client(client_id)
         return to_client_response(client)
-    except ValueError as e:
+    except EntityNotFound as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

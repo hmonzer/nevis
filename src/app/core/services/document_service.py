@@ -1,18 +1,18 @@
 """Document service for handling document upload and processing."""
 from uuid import UUID, uuid4
-from datetime import datetime, UTC
 
-from sqlalchemy.exc import IntegrityError
-
-from src.app.core.domain.models import Document, DocumentChunk, DocumentStatus
+from src.app.core.domain.models import Document, DocumentChunk
 from src.app.core.services.chunking import ChunkingStrategy
-from src.shared.database.unit_of_work import UnitOfWork
-from src.shared.blob_storage.s3_blober import S3BlobStorage
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
+from src.shared.blob_storage.s3_blober import S3BlobStorage
+from src.shared.database.unit_of_work import UnitOfWork
 
 
 # TODO: Add tests for Document Service that verify the document is persisted to S3, document entity is persisted with proper state.
+from src.shared.exceptions import EntityNotFound
+
+
 class DocumentService:
     """Service for handling Document business logic."""
 
@@ -40,22 +40,16 @@ class DocumentService:
         self.blob_storage = blob_storage
         self.chunking_service = chunking_strategy
 
-    async def upload_document(
+    async def create_document(
         self,
         client_id: UUID,
         title: str,
         content: str
     ) -> Document:
         """
-        Upload a document, store it in S3, chunk it, and persist everything to the database.
+        Create a document record and upload it to S3.
 
-        Process:
-        1. Verify client exists
-        2. Upload content to S3
-        3. Create document record with PENDING status
-        4. Chunk the content
-        5. Persist document and chunks to database
-        6. Update document status to PROCESSED
+        If the upload fails, the document is marked as FAILED. Otherwise, it's PENDING.
 
         Args:
             client_id: ID of the client who owns this document
@@ -65,100 +59,88 @@ class DocumentService:
         Returns:
             The created Document domain model
 
-        Raises:
-            ValueError: If client doesn't exist or processing fails
         """
-        # 1. Verify client exists
         client = await self.client_repository.get_by_id(client_id)
         if not client:
-            raise ValueError(f"Client with ID {client_id} not found")
+            raise EntityNotFound("Client", client_id)
 
-        # 2. Generate document ID and S3 key
         document_id = uuid4()
         s3_key = f"clients/{client_id}/documents/{document_id}.txt"
-
-        try:
-            # 3. Upload content to S3
-            await self.blob_storage.upload_text_content(s3_key, content)
-        except RuntimeError as e:
-            raise ValueError(f"Failed to upload document to storage: {str(e)}") from e
-
-        # 4. Create document model with PENDING status
         document = Document(
             id=document_id,
             client_id=client_id,
             title=title,
             s3_key=s3_key,
-            status=DocumentStatus.PENDING,
-            created_at=datetime.now(UTC),
         )
 
-        # TODO: at this point, let's persist the document to the DB with Pending status and refactor the chunking into a separate method.
-        #  Later this chunking will happen in a background thread. It will retrieve the document, do the chunking and calculate embeddings,
-        #  then update the doc status to PROCESSED.
         try:
-            # 5. Chunk the content
-            chunk_texts = self.chunking_service.chunk_text(content)
+            await self.blob_storage.upload_text_content(s3_key, content)
+        except RuntimeError:
+            document.failed()
 
-            # 6. Create DocumentChunk models
-            chunks: list[DocumentChunk] = []
-            for index, chunk_text in enumerate(chunk_texts):
-                chunk = DocumentChunk(
-                    id=uuid4(),
-                    document_id=document_id,
-                    chunk_index=index,
-                    chunk_content=chunk_text,
-                    embedding=None,  # Phase 1: embeddings are null
-                )
-                chunks.append(chunk)
-
-            # 7. Update document status to PROCESSED
-            document.status = DocumentStatus.PROCESSED
-
-            # 8. Persist document and chunks using unit of work
-            async with self.unit_of_work:
-                self.unit_of_work.add(document)
-                for chunk in chunks:
-                    self.unit_of_work.add(chunk)
-
-        except IntegrityError as e:
-            # If database persistence fails, try to clean up S3
-            try:
-                await self.blob_storage.delete_object(s3_key)
-            except RuntimeError:
-                pass  # Ignore cleanup errors
-
-            raise ValueError(f"Failed to persist document: {str(e)}") from e
-        except Exception as e:
-            # If any other error occurs, mark as FAILED and try to persist
-            document.status = DocumentStatus.FAILED
-            try:
-                async with self.unit_of_work:
-                    self.unit_of_work.add(document)
-            except Exception:
-                pass  # Ignore errors when saving failed status
-
-            raise ValueError(f"Failed to process document: {str(e)}") from e
+        async with self.unit_of_work:
+            self.unit_of_work.add(document)
 
         return document
 
-    async def get_document(self, document_id: UUID) -> Document:
+    async def get_document_by_id_and_client_id(
+        self, document_id: UUID, client_id: UUID
+    ) -> Document:
         """
-        Get a document by ID.
+        Get a document by its ID and client ID.
 
         Args:
             document_id: ID of the document to retrieve
+            client_id: ID of the client owner
 
         Returns:
             The Document domain model
 
         Raises:
-            ValueError: If document not found
+            ValueError: If document not found for the given client
+        """
+        document = await self.document_repository.get_client_document_by_id(
+            document_id, client_id
+        )
+        if not document:
+            raise EntityNotFound("Document", document_id)
+        return document
+
+    async def process_document(self, document_id: UUID, content: str) -> None:
+        """
+        Process a document by chunking its content and saving the chunks.
+
+        This will be executed in a background process.
+
+        Args:
+            document_id: The ID of the document to process
+            content: The raw text content to be chunked
+
+        Raises:
+            ValueError: If processing fails
         """
         document = await self.document_repository.get_by_id(document_id)
         if not document:
-            raise ValueError(f"Document with ID {document_id} not found")
-        return document
+            # TODO: log error
+            return
+
+        chunk_texts = self.chunking_service.chunk_text(content)
+        chunks: list[DocumentChunk] = []
+        for index, chunk_text in enumerate(chunk_texts):
+            chunk = DocumentChunk(
+                id=uuid4(),
+                document_id=document.id,
+                chunk_index=index,
+                chunk_content=chunk_text,
+                embedding=None,  # Phase 1: embeddings are null
+            )
+            chunks.append(chunk)
+
+        async with self.unit_of_work:
+            document.processed()
+            for chunk in chunks:
+                self.unit_of_work.add(chunk)
+
 
     async def get_client_documents(self, client_id: UUID) -> list[Document]:
         """
@@ -176,6 +158,6 @@ class DocumentService:
         # Verify client exists
         client = await self.client_repository.get_by_id(client_id)
         if not client:
-            raise ValueError(f"Client with ID {client_id} not found")
+            raise EntityNotFound("Client", client_id)
 
         return await self.document_repository.get_by_client_id(client_id)

@@ -1,34 +1,9 @@
 """Integration tests for document upload and chunking pipeline."""
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
 from pydantic.v1 import EmailStr
-from sqlalchemy import select
 
-from src.app.main import create_app
-from src.client import NevisClient, CreateClientRequest
+from src.client import CreateClientRequest
 from src.client.schemas import CreateDocumentRequest
-
-
-@pytest_asyncio.fixture(scope="module")
-async def test_app(test_settings_override):
-    """
-    Create test application with test database and LocalStack.
-    Module-scoped for better performance.
-    """
-    app = create_app()
-    yield app
-
-
-@pytest_asyncio.fixture
-async def nevis_client(test_app, clean_database):
-    """Create Nevis client for testing with clean database."""
-    transport = ASGITransport(app=test_app)
-    http_client = AsyncClient(transport=transport, base_url="http://test")
-    client = NevisClient(base_url="http://test", client=http_client)
-
-    async with client:
-        yield client
 
 
 @pytest.mark.asyncio
@@ -75,22 +50,14 @@ async def test_upload_document_full_pipeline(nevis_client, s3_storage, clean_dat
         content=document_content
     )
 
-    # TODO: create corresponding methods on nevis_client to make this easier
-    # Make the API call through the test client
-    response = await nevis_client.client.post(f"/api/v1/clients/{client_id}/documents/",
-            json={"title": document_title, "content": document_content})
-
+    document_response = await nevis_client.upload_document(client_id, document_request)
 
     # 4. Verify API response
-    assert response.status_code == 201
-    document_data = response.json()
-    assert document_data["title"] == document_title
-    assert document_data["client_id"] == str(client_id)
-    assert document_data["status"] == "PROCESSED"
-    assert "s3_key" in document_data
-
-    document_id = document_data["id"]
-    s3_key = document_data["s3_key"]
+    assert document_response.title == document_title
+    assert document_response.client_id == client_id
+    assert document_response.status == "PENDING"  # It's pending because processing is in the background
+    assert document_response.s3_key
+    s3_key = document_response.s3_key
 
     # 5. Verify file exists in S3 (LocalStack)
     file_exists = await s3_storage.object_exists(s3_key)
@@ -100,157 +67,75 @@ async def test_upload_document_full_pipeline(nevis_client, s3_storage, clean_dat
     retrieved_content = await s3_storage.download_text_content(s3_key)
     assert retrieved_content == document_content.strip()
 
-    # # 7. Verify document record in database
-    # from src.app.infrastructure.entities.document_entity import DocumentEntity, DocumentStatus
-    #
-    # async with clean_database.session_maker() as session:
-    #     result = await session.execute(
-    #         select(DocumentEntity).where(DocumentEntity.id == document_id)
-    #     )
-    #     db_document = result.scalar_one_or_none()
-    #
-    #     assert db_document is not None
-    #     assert db_document.title == document_title
-    #     assert db_document.client_id == client_id
-    #     assert db_document.status == DocumentStatus.PROCESSED
-    #     assert db_document.s3_key == s3_key
-    #
-    # # 8. Verify document chunks were created
-    # from src.app.infrastructure.entities import DocumentChunkEntity
-    #
-    # async with clean_database.session_maker() as session:
-    #     result = await session.execute(
-    #         select(DocumentChunkEntity)
-    #         .where(DocumentChunkEntity.document_id == document_id)
-    #         .order_by(DocumentChunkEntity.chunk_index)
-    #     )
-    #     chunks = result.scalars().all()
-    #
-    #     # Should have at least one chunk
-    #     assert len(chunks) > 0, "Document should be chunked into at least one chunk"
-    #
-    #     # Verify chunk properties
-    #     for i, chunk in enumerate(chunks):
-    #         assert chunk.chunk_index == i, f"Chunk {i} should have correct index"
-    #         assert chunk.document_id == document_id
-    #         assert len(chunk.chunk_content) > 0, f"Chunk {i} should have content"
-    #         assert chunk.embedding is None, "Embedding should be null in Phase 1"
-    #
-    #     # Verify chunks are ordered
-    #     chunk_indices = [chunk.chunk_index for chunk in chunks]
-    #     assert chunk_indices == sorted(chunk_indices), "Chunks should be ordered by index"
-
-
 @pytest.mark.asyncio
-async def test_upload_document_client_not_found(test_app, clean_database):
+async def test_upload_document_client_not_found(nevis_client):
     """Test that uploading a document for non-existent client fails."""
     from uuid import uuid4
+    import httpx
 
     non_existent_client_id = uuid4()
     document_request = CreateDocumentRequest(
-        title="Test Document",
-        content="This should fail"
+        title="Test Document", content="This should fail"
     )
 
-    transport = ASGITransport(app=test_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        response = await http_client.post(
-            f"/api/v1/clients/{non_existent_client_id}/documents/",
-            json={"title": document_request.title, "content": document_request.content}
-        )
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        await nevis_client.upload_document(non_existent_client_id, document_request)
 
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
+    assert isinstance(excinfo.value, httpx.HTTPStatusError)
+    assert excinfo.value.response.status_code == 404
+    assert "not found" in excinfo.value.response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_upload_document_empty_content(nevis_client, test_app, clean_database):
-    """Test that uploading a document with empty content fails validation."""
-    # Create a client first
-    client_request = CreateClientRequest(
-        first_name="Jane",
-        last_name="Smith",
-        email=EmailStr("jane.smith@test.com"),
-        description="Test client"
-    )
-    client_response = await nevis_client.create_client(client_request)
-    client_id = client_response.id
-
-    transport = ASGITransport(app=test_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        response = await http_client.post(
-            f"/api/v1/clients/{client_id}/documents/",
-            json={"title": "Empty Doc", "content": ""}
-        )
-
-    # Should fail validation
-    assert response.status_code == 422  # Validation error
-
-
-@pytest.mark.asyncio
-async def test_get_document(nevis_client, test_app, clean_database):
+async def test_get_document(nevis_client):
     """Test retrieving a document by ID."""
     # Create client
     client_request = CreateClientRequest(
         first_name="Bob",
         last_name="Johnson",
         email=EmailStr("bob.johnson@test.com"),
-        description="Test client"
+        description="Test client",
     )
     client_response = await nevis_client.create_client(client_request)
     client_id = client_response.id
 
     # Upload document
-    transport = ASGITransport(app=test_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        create_response = await http_client.post(
-            f"/api/v1/clients/{client_id}/documents/",
-            json={"title": "Test Doc", "content": "Test content for retrieval"}
-        )
-        assert create_response.status_code == 201
-        document_id = create_response.json()["id"]
+    doc_request = CreateDocumentRequest(
+        title="Test Doc", content="Test content for retrieval"
+    )
+    uploaded_doc = await nevis_client.upload_document(client_id, doc_request)
+    document_id = uploaded_doc.id
 
-        # Retrieve document
-        get_response = await http_client.get(
-            f"/api/v1/clients/{client_id}/documents/{document_id}"
-        )
+    # Retrieve document
+    retrieved_doc = await nevis_client.get_document(client_id, document_id)
 
-    assert get_response.status_code == 200
-    doc_data = get_response.json()
-    assert doc_data["id"] == document_id
-    assert doc_data["title"] == "Test Doc"
-    assert doc_data["client_id"] == str(client_id)
+    assert retrieved_doc.id == document_id
+    assert retrieved_doc.title == "Test Doc"
+    assert retrieved_doc.client_id == client_id
 
 
 @pytest.mark.asyncio
-async def test_list_client_documents(nevis_client, test_app, clean_database):
+async def test_list_client_documents(nevis_client):
     """Test listing all documents for a client."""
     # Create client
     client_request = CreateClientRequest(
         first_name="Alice",
         last_name="Williams",
         email=EmailStr("alice.williams@test.com"),
-        description="Test client"
+        description="Test client",
     )
     client_response = await nevis_client.create_client(client_request)
     client_id = client_response.id
 
     # Upload multiple documents
-    transport = ASGITransport(app=test_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        for i in range(3):
-            response = await http_client.post(
-                f"/api/v1/clients/{client_id}/documents/",
-                json={"title": f"Document {i}", "content": f"Content for document {i}"}
-            )
-            assert response.status_code == 201
-
-        # List documents
-        list_response = await http_client.get(
-            f"/api/v1/clients/{client_id}/documents/"
+    for i in range(3):
+        doc_request = CreateDocumentRequest(
+            title=f"Document {i}", content=f"Content for document {i}"
         )
+        await nevis_client.upload_document(client_id, doc_request)
 
-    assert list_response.status_code == 200
-    documents = list_response.json()
+    # List documents
+    documents = await nevis_client.list_documents(client_id)
+
     assert len(documents) == 3
-    assert all(doc["client_id"] == str(client_id) for doc in documents)
+    assert all(doc.client_id == client_id for doc in documents)

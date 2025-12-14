@@ -1,38 +1,11 @@
 from typing import cast
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport, HTTPStatusError
+from httpx import HTTPStatusError
 from pydantic import ValidationError
 from pydantic.v1 import EmailStr
 
-from src.app.main import create_app
-from src.client import NevisClient, CreateClientRequest
-
-
-@pytest_asyncio.fixture(scope="module")
-async def test_app(test_settings_override):
-    """
-    Create test application with test database.
-    Module-scoped so the app is created once per test module for better performance.
-    Uses centralized test_settings_override fixture for configuration.
-    """
-    app = create_app()
-    yield app
-
-
-@pytest_asyncio.fixture
-async def nevis_client(test_app, clean_database):
-    """
-    Create a Nevis client for testing.
-    Depends on clean_database to ensure test isolation between runs.
-    """
-    transport = ASGITransport(app=test_app)
-    http_client = AsyncClient(transport=transport, base_url="http://test")
-    client = NevisClient(base_url="http://test", client=http_client)
-
-    async with client:
-        yield client
+from src.client import CreateClientRequest
 
 
 @pytest.mark.asyncio
@@ -106,7 +79,7 @@ async def test_get_client(nevis_client):
 
 @pytest.mark.asyncio
 async def test_create_client_blank_first_name():
-    """Test that creating a client with blank first name fails validation."""
+    """Test that creating a client with a blank first name fails validation."""
     with pytest.raises(ValidationError) as exc_info:
         CreateClientRequest(
             first_name="",
@@ -122,7 +95,7 @@ async def test_create_client_blank_first_name():
 
 @pytest.mark.asyncio
 async def test_create_client_blank_last_name():
-    """Test that creating a client with blank last name fails validation."""
+    """Test that creating a client with a blank last name fails validation."""
     with pytest.raises(ValidationError) as exc_info:
         CreateClientRequest(
             first_name="John",

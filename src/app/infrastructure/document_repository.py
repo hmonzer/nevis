@@ -21,6 +21,17 @@ class DocumentRepository(BaseRepository[DocumentEntity, Document]):
             select(DocumentEntity).where(DocumentEntity.id == document_id)
         )
 
+    async def get_client_document_by_id(
+        self, document_id: UUID, client_id: UUID
+    ) -> Optional[Document]:
+        """Get a document by its ID and client ID."""
+        return await self.find_one(
+            select(DocumentEntity).where(
+                DocumentEntity.id == document_id,
+                DocumentEntity.client_id == client_id
+            )
+        )
+
     async def get_by_client_id(self, client_id: UUID) -> list[Document]:
         """Get all documents for a specific client."""
         return await self.find_all(

@@ -10,6 +10,9 @@ from src.client.schemas import CreateClientRequest
 from src.app.infrastructure.client_repository import ClientRepository
 
 
+from src.shared.exceptions import EntityNotFound
+
+
 class ClientService:
     """Service for handling Client business logic."""
 
@@ -43,12 +46,12 @@ class ClientService:
         """Get a client by ID."""
         client = await self.repository.get_by_id(client_id)
         if not client:
-            raise ValueError(f"Client with ID {client_id} not found")
+            raise EntityNotFound("Client", client_id)
         return client
 
     async def get_client_by_email(self, email: str) -> Client:
         """Get a client by email."""
         client = await self.repository.get_by_email(email)
         if not client:
-            raise ValueError(f"Client with email {email} not found")
+            raise EntityNotFound("Client", email)
         return client
