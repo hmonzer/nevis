@@ -1,4 +1,5 @@
 """Domain models used in business logic."""
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -45,7 +46,8 @@ class Document(BaseModel):
 
 class DocumentChunk(BaseModel):
     """Domain model for DocumentChunk used in business logic."""
-    id: UUID
+
+    id: UUID = Field(default_factory=uuid.uuid4, description="Unique chunk ID")
     document_id: UUID = Field(..., description="ID of the parent document")
     chunk_index: int = Field(..., ge=0, description="Index of this chunk in the document")
     chunk_content: str = Field(..., min_length=1, description="Text content of this chunk")
