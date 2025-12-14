@@ -36,10 +36,6 @@ class DocumentProcessor:
         """
         self.chunking_strategy = chunking_strategy
         self.embedding_service = embedding_service
-        logger.info(
-            "Initialized DocumentProcessor with embedding dimension %d",
-            embedding_service.embedding_dimension
-        )
 
     async def process_text(self, document_id: UUID, content: str) -> list[DocumentChunk]:
         """
@@ -74,7 +70,7 @@ class DocumentProcessor:
 
         # Generate embeddings for all chunks at once (more efficient than one-by-one)
         # Returns list of EmbeddingVectorResult with text and embedding paired together
-        embedding_results = await self.embedding_service.embed_batch(chunk_texts)
+        embedding_results = await self.embedding_service.embed_document_batch(chunk_texts)
 
         # Create DocumentChunk objects with embeddings
         # No need to zip - each result already contains text and embedding paired

@@ -31,19 +31,8 @@ class EmbeddingService(ABC):
     without changing the consuming code.
     """
 
-    @property
     @abstractmethod
-    def embedding_dimension(self) -> int:
-        """
-        Get the dimension of the embedding vectors produced by this service.
-
-        Returns:
-            The dimension of the embedding vectors
-        """
-        pass
-
-    @abstractmethod
-    async def embed_text(self, text: str) -> EmbeddingVectorResult:
+    async def embed_query(self, text: str) -> EmbeddingVectorResult:
         """
         Generate an embedding vector for the given text.
 
@@ -59,7 +48,23 @@ class EmbeddingService(ABC):
         pass
 
     @abstractmethod
-    async def embed_batch(self, texts: list[str]) -> list[EmbeddingVectorResult]:
+    async def embed_document(self, text: str) -> EmbeddingVectorResult:
+        """
+        Generate an embedding vector for the given text.
+
+        Args:
+            text: The input text to embed
+
+        Returns:
+            EmbeddingVectorResult containing the text and its embedding vector
+
+        Raises:
+            ValueError: If text is empty or invalid
+        """
+        pass
+
+    @abstractmethod
+    async def embed_document_batch(self, texts: list[str]) -> list[EmbeddingVectorResult]:
         """
         Generate embedding vectors for a batch of texts.
 
@@ -85,6 +90,8 @@ class SentenceTransformerEmbedding(EmbeddingService):
     SentenceTransformer model instance.
     """
 
+
+
     def __init__(self, model: SentenceTransformer):
         """
         Initialize the SentenceTransformer embedding service.
@@ -93,23 +100,41 @@ class SentenceTransformerEmbedding(EmbeddingService):
             model: Pre-configured SentenceTransformer model instance
         """
         self.model = model
-        self._embedding_dimension = self.model.get_sentence_embedding_dimension()
-        logger.info(
-            "Initialized SentenceTransformerEmbedding with dimension %d",
-            self._embedding_dimension
+
+    async def embed_query(self, text: str) -> EmbeddingVectorResult:
+        """
+               Generate an embedding vector for the given text.
+
+               Runs the synchronous model encoding in a thread pool to avoid blocking
+               the event loop.
+
+               Args:
+                   text: The input text to embed
+
+               Returns:
+                   EmbeddingVectorResult containing the text and its embedding vector
+
+               Raises:
+                   ValueError: If text is empty or invalid
+               """
+        if not text or not text.strip():
+            logger.warning("Attempted to embed empty or whitespace-only text")
+            raise ValueError("Text cannot be empty or whitespace only")
+
+        logger.debug("Generating embedding for text of length %d", len(text))
+
+        # Run synchronous encoding in thread pool to avoid blocking event loop
+        embedding = await asyncio.to_thread(
+            self.model.encode_query,
+            text,
+            convert_to_numpy=True
         )
+        # Ensure it's a numpy array and convert to list
+        embedding_list = embedding.tolist() if isinstance(embedding, np.ndarray) else list(embedding)
 
-    @property
-    def embedding_dimension(self) -> int:
-        """
-        Get the dimension of the embedding vectors produced by this service.
+        return EmbeddingVectorResult(text=text, embedding=embedding_list)
 
-        Returns:
-            The dimension of the embedding vectors
-        """
-        return self._embedding_dimension
-
-    async def embed_text(self, text: str) -> EmbeddingVectorResult:
+    async def embed_document(self, text: str) -> EmbeddingVectorResult:
         """
         Generate an embedding vector for the given text.
 
@@ -133,7 +158,7 @@ class SentenceTransformerEmbedding(EmbeddingService):
 
         # Run synchronous encoding in thread pool to avoid blocking event loop
         embedding = await asyncio.to_thread(
-            self.model.encode,
+            self.model.encode_document,
             text,
             convert_to_numpy=True
         )
@@ -143,7 +168,7 @@ class SentenceTransformerEmbedding(EmbeddingService):
 
         return EmbeddingVectorResult(text=text, embedding=embedding_list)
 
-    async def embed_batch(self, texts: list[str]) -> list[EmbeddingVectorResult]:
+    async def embed_document_batch(self, texts: list[str]) -> list[EmbeddingVectorResult]:
         """
         Generate embedding vectors for a batch of texts.
 

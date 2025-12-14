@@ -133,7 +133,8 @@ def get_sentence_transformer_model() -> SentenceTransformer:
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
-    model_name = "all-MiniLM-L6-v2"
+    # model_name = "all-MiniLM-L6-v2"
+    model_name = "google/embeddinggemma-300m"
 
     # Try to find the model in the models directory
     base_dir = Path(__file__).parent.parent.parent  # Go up to project root
