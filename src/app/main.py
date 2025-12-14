@@ -1,0 +1,54 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+from src.shared.database.database import Database
+from src.shared.database.database_settings import DatabaseSettings
+from src.app.core.config import get_settings
+from src.app.api.v1 import clients
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    settings = get_settings()
+
+    # Initialize database tables on startup
+    db_settings = DatabaseSettings(db_url=settings.database_url)
+    db = Database(db_settings)
+
+    async with db._engine.begin() as conn:
+        from src.shared.database.database import Base
+        await conn.run_sync(Base.metadata.create_all)
+
+    await db._engine.dispose()
+
+    yield
+
+    # Cleanup on shutdown (if needed)
+
+
+def create_app() -> FastAPI:
+    """Create and configure FastAPI application."""
+    settings = get_settings()
+
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        lifespan=lifespan
+    )
+
+    # Include routers
+    app.include_router(clients.router, prefix="/api/v1")
+
+    @app.get("/")
+    async def root():
+        return {"message": "Welcome to Nevis API"}
+
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy"}
+
+    return app
+
+
+app = create_app()

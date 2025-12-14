@@ -35,13 +35,14 @@ async def db(postgres_container):
 
 # This is needed due to Colima/Mac setup and a delay in binding ports
 async def wait_till_db_ready(db):
-    for attempt in range(10):
+    max_attempts = 10
+    for attempt in range(max_attempts):
         try:
             async with db._engine.begin():
                 return
         except Exception:
             await asyncio.sleep(0.1)
-    raise Exception("Database not ready after 5 attempts")
+    raise Exception(f"Database not ready after {max_attempts} attempts")
 
 @pytest_asyncio.fixture
 async def clean_database(db):
