@@ -1,19 +1,16 @@
 """Document service for handling document upload and processing."""
+import logging
 from uuid import UUID, uuid4
 
-from src.app.core.domain.models import Document, DocumentChunk
-from src.app.core.services.chunking import ChunkingStrategy
+from src.app.core.domain.models import Document
+from src.app.core.services.document_processor import DocumentProcessor
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
 from src.shared.blob_storage.s3_blober import S3BlobStorage
 from src.shared.database.unit_of_work import UnitOfWork
-from src.app.logging import get_logger
-
-
-# TODO: Add tests for Document Service that verify the document is persisted to S3, document entity is persisted with proper state.
 from src.shared.exceptions import EntityNotFound
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class DocumentService:
@@ -25,7 +22,7 @@ class DocumentService:
         document_repository: DocumentRepository,
         unit_of_work: UnitOfWork,
         blob_storage: S3BlobStorage,
-        chunking_strategy: ChunkingStrategy,
+        document_processor: DocumentProcessor,
     ):
         """
         Initialize the document service.
@@ -35,13 +32,13 @@ class DocumentService:
             document_repository: Repository for document operations
             unit_of_work: Unit of work for database transactions
             blob_storage: S3 blob storage for file operations
-            chunking_strategy: Service for text chunking
+            document_processor: Processor for document chunking and embedding
         """
         self.client_repository = client_repository
         self.document_repository = document_repository
         self.unit_of_work = unit_of_work
         self.blob_storage = blob_storage
-        self.chunking_service = chunking_strategy
+        self.document_processor = document_processor
 
     async def create_document(
         self,
@@ -112,39 +109,45 @@ class DocumentService:
 
     async def process_document(self, document_id: UUID, content: str) -> None:
         """
-        Process a document by chunking its content and saving the chunks.
+        Process a document by chunking its content and generating embeddings.
+
+        This method:
+        1. Retrieves the document from the repository
+        2. Uses DocumentProcessor to chunk and embed the content
+        3. Updates document status to PROCESSED
+        4. Persists all chunks in a single transaction
 
         This will be executed in a background process.
 
         Args:
             document_id: The ID of the document to process
-            content: The raw text content to be chunked
+            content: The raw text content to be chunked and embedded
 
         Raises:
-            ValueError: If processing fails
+            ValueError: If document not found or processing fails
         """
+        logger.info("Starting processing for document %s", document_id)
+
+        # Get the document
         document = await self.document_repository.get_by_id(document_id)
         if not document:
-            logger.error(f"Document {document_id} not found for processing.")
-            return
+            logger.error("Document %s not found for processing", document_id)
+            raise EntityNotFound(f"Document with ID {document_id} not found")
 
-        chunk_texts = self.chunking_service.chunk_text(content)
-        chunks: list[DocumentChunk] = []
-        for index, chunk_text in enumerate(chunk_texts):
-            chunk = DocumentChunk(
-                id=uuid4(),
-                document_id=document.id,
-                chunk_index=index,
-                chunk_content=chunk_text,
-                embedding=None,  # Phase 1: embeddings are null
-            )
-            chunks.append(chunk)
-
+        # Process text to get chunks with embeddings
+        chunks = await self.document_processor.process_text(document_id, content)
+        document.processed()
+        # Persist document status update and chunks in a single transaction
         async with self.unit_of_work:
-            document.processed()
             await self.unit_of_work.update(document)
             for chunk in chunks:
                 self.unit_of_work.add(chunk)
+
+        logger.info(
+            "Successfully processed document %s with %d chunks",
+            document_id,
+            len(chunks)
+        )
 
 
     async def get_client_documents(self, client_id: UUID) -> list[Document]:

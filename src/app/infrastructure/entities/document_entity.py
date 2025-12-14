@@ -56,10 +56,10 @@ class DocumentChunkEntity(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Vector embedding field - nullable for now (Phase 1)
-    # Will be populated in Phase 2 when we implement embedding calculation
+    # Vector embedding field - nullable for now
+    # Using all-MiniLM-L6-v2 which produces 384-dimensional embeddings
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(1536),  # Default dimension for OpenAI embeddings
+        Vector(384),  # Dimension for all-MiniLM-L6-v2 embeddings
         nullable=True
     )
 

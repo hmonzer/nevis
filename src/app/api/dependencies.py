@@ -1,10 +1,15 @@
+import os
+from pathlib import Path
 from typing import AsyncGenerator
 from fastapi import Depends
+from sentence_transformers import SentenceTransformer
 
 from src.app.core.domain.models import Client, Document, DocumentChunk
 from src.app.core.services.client_service import ClientService
 from src.app.core.services.document_service import DocumentService
+from src.app.core.services.document_processor import DocumentProcessor
 from src.app.core.services.chunking import RecursiveChunkingStrategy
+from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.shared.database.database import Database, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.database.entity_mapper import EntityMapper
@@ -122,12 +127,50 @@ def get_chunking_service() -> RecursiveChunkingStrategy:
     )
 
 
+def get_sentence_transformer_model() -> SentenceTransformer:
+    """
+    Get SentenceTransformer model instance.
+
+    Checks for local model first, otherwise downloads from HuggingFace.
+    """
+    model_name = "all-MiniLM-L6-v2"
+
+    # Try to find the model in the models directory
+    base_dir = Path(__file__).parent.parent.parent  # Go up to project root
+    models_dir = base_dir / "models"
+    model_path = models_dir / model_name
+
+    # If local model exists, use it; otherwise download from HuggingFace
+    if model_path.exists() and os.path.isdir(model_path):
+        return SentenceTransformer(str(model_path))
+    else:
+        return SentenceTransformer(model_name)
+
+
+def get_embedding_service(
+    model: SentenceTransformer = Depends(get_sentence_transformer_model)
+) -> SentenceTransformerEmbedding:
+    """Get embedding service instance with injected SentenceTransformer model."""
+    return SentenceTransformerEmbedding(model)
+
+
+def get_document_processor(
+    chunking_service: RecursiveChunkingStrategy = Depends(get_chunking_service),
+    embedding_service: SentenceTransformerEmbedding = Depends(get_embedding_service),
+) -> DocumentProcessor:
+    """Get Document processor instance."""
+    return DocumentProcessor(
+        chunking_strategy=chunking_service,
+        embedding_service=embedding_service,
+    )
+
+
 def get_document_service(
     client_repository: ClientRepository = Depends(get_client_repository),
     document_repository: DocumentRepository = Depends(get_document_repository),
     unit_of_work: UnitOfWork = Depends(get_unit_of_work),
     blob_storage: S3BlobStorage = Depends(get_s3_storage),
-    chunking_service: RecursiveChunkingStrategy = Depends(get_chunking_service),
+    document_processor: DocumentProcessor = Depends(get_document_processor),
 ) -> DocumentService:
     """Get Document service instance."""
     return DocumentService(
@@ -135,5 +178,5 @@ def get_document_service(
         document_repository=document_repository,
         unit_of_work=unit_of_work,
         blob_storage=blob_storage,
-        chunking_strategy=chunking_service,
+        document_processor=document_processor,
     )

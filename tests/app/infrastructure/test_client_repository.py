@@ -317,6 +317,13 @@ async def test_search_with_custom_threshold(client_repository, unit_of_work):
         description="Consultant"
     )
 
+    client = Client(
+        first_name="Wilbur",
+        last_name="Taylor",
+        email=EmailStr("william.taylor@example.com"),
+        description="Consultant"
+    )
+
     async with unit_of_work:
         unit_of_work.add(client)
 
