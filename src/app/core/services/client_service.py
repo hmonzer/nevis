@@ -10,7 +10,7 @@ from src.client.schemas import CreateClientRequest
 from src.app.infrastructure.client_repository import ClientRepository
 
 
-from src.shared.exceptions import EntityNotFound
+from src.shared.exceptions import EntityNotFound, ConflictingEntityFound
 
 
 class ClientService:
@@ -38,7 +38,7 @@ class ClientService:
                 self.unit_of_work.add(client)
         except IntegrityError as e:
             # Database constraint violation (e.g., duplicate email)
-            raise ValueError(f"Client with email {request.email} already exists") from e
+            raise ConflictingEntityFound("Client", "email", request.email) from e
 
         return client
 

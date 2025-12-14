@@ -6,8 +6,10 @@ from src.client.schemas import CreateDocumentRequest, DocumentResponse
 from src.app.api.dependencies import get_document_service
 from src.app.api.mappers import to_document_response
 from src.shared.exceptions import EntityNotFound
+from src.app.logging import get_logger
 
 router = APIRouter(prefix="/clients/{client_id}/documents", tags=["documents"])
+logger = get_logger(__name__)
 
 
 @router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -44,8 +46,10 @@ async def create_document(
             client_id=client_id, title=request.title, content=request.content
         )
     except EntityNotFound as e:
+        logger.error(f"Failed to create document, client not found: {e}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
+        logger.error(f"Failed to create document: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )
@@ -82,6 +86,7 @@ async def get_document(
         )
         return to_document_response(document)
     except EntityNotFound as e:
+        logger.error(f"Document not found for client {client_id}: {e}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
@@ -107,4 +112,5 @@ async def list_client_documents(
         documents = await service.get_client_documents(client_id)
         return [to_document_response(doc) for doc in documents]
     except EntityNotFound as e:
+        logger.error(f"Client not found when listing documents: {e}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
