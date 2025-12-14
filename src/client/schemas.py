@@ -1,6 +1,7 @@
-"""API schemas for client requests and responses."""
+"""API schemas for client and document requests and responses."""
 from datetime import datetime
 from uuid import UUID
+from enum import Enum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -38,3 +39,36 @@ class ClientResponse(BaseModel):
         if not v or not v.strip():
             raise ValueError("Field cannot be blank or only whitespace")
         return v.strip()
+
+
+class DocumentStatusEnum(str, Enum):
+    """Document processing status enum for API."""
+    PENDING = "PENDING"
+    PROCESSED = "PROCESSED"
+    FAILED = "FAILED"
+
+
+class CreateDocumentRequest(BaseModel):
+    """Request schema for creating a new document."""
+    title: str = Field(..., min_length=1, description="Document title")
+    content: str = Field(..., min_length=1, description="Text content of the document")
+
+    @field_validator("title", "content")
+    @classmethod
+    def validate_not_blank(cls, v: str) -> str:
+        """Ensure fields are not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Field cannot be blank or only whitespace")
+        return v.strip()
+
+
+class DocumentResponse(BaseModel):
+    """Response schema for document data returned by the API."""
+    id: UUID
+    client_id: UUID
+    title: str
+    s3_key: str
+    status: DocumentStatusEnum
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

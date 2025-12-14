@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from sqlalchemy import text
 
-from src.shared.database.database import Database
-from src.shared.database.database_settings import DatabaseSettings
+from src.shared.database.database import Database, DatabaseSettings
 from src.app.config import get_settings
-from src.app.api.v1 import clients
+from src.app.api.v1 import clients, documents
 
 
 @asynccontextmanager
@@ -17,6 +17,10 @@ async def lifespan(app: FastAPI):
     db = Database(db_settings)
 
     async with db._engine.begin() as conn:
+        # Enable pgvector extension
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+        # Create all tables
         from src.shared.database.database import Base
         await conn.run_sync(Base.metadata.create_all)
 
@@ -39,6 +43,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(clients.router, prefix="/api/v1")
+    app.include_router(documents.router, prefix="/api/v1")
 
     @app.get("/")
     async def root():
