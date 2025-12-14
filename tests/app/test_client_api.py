@@ -52,7 +52,7 @@ async def test_create_duplicate_email(nevis_client):
         await nevis_client.create_client(duplicate_request)
 
     error = cast(HTTPStatusError, exc_info.value)
-    assert error.response.status_code == 400
+    assert error.response.status_code == 409
     assert "already exists" in error.response.json()["detail"]
 
 

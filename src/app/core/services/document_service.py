@@ -7,10 +7,13 @@ from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
 from src.shared.blob_storage.s3_blober import S3BlobStorage
 from src.shared.database.unit_of_work import UnitOfWork
+from src.app.logging import get_logger
 
 
 # TODO: Add tests for Document Service that verify the document is persisted to S3, document entity is persisted with proper state.
 from src.shared.exceptions import EntityNotFound
+
+logger = get_logger(__name__)
 
 
 class DocumentService:
@@ -75,7 +78,8 @@ class DocumentService:
 
         try:
             await self.blob_storage.upload_text_content(s3_key, content)
-        except RuntimeError:
+        except RuntimeError as e:
+            logger.error(f"S3 upload failed for document {document_id}: {e}")
             document.failed()
 
         async with self.unit_of_work:
@@ -121,7 +125,7 @@ class DocumentService:
         """
         document = await self.document_repository.get_by_id(document_id)
         if not document:
-            # TODO: log error
+            logger.error(f"Document {document_id} not found for processing.")
             return
 
         chunk_texts = self.chunking_service.chunk_text(content)
@@ -138,6 +142,7 @@ class DocumentService:
 
         async with self.unit_of_work:
             document.processed()
+            await self.unit_of_work.update(document)
             for chunk in chunks:
                 self.unit_of_work.add(chunk)
 
