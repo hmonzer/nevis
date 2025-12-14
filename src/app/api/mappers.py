@@ -1,5 +1,5 @@
 """Mappers for converting between domain models and API schemas."""
-from src.app.domain.models import Client
+from src.app.core.domain.models import Client
 from src.client.schemas import ClientResponse
 
 

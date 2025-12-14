@@ -1,76 +1,32 @@
-import asyncio
+from typing import cast
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport, HTTPStatusError
+from pydantic import ValidationError
 from pydantic.v1 import EmailStr
-from testcontainers.postgres import PostgresContainer
 
 from src.app.main import create_app
 from src.client import NevisClient, CreateClientRequest
-from src.shared.database.database import Database, Base
-from src.shared.database.database_settings import DatabaseSettings
 
 
-@pytest.fixture(scope="module")
-def postgres_container():
-    """Start a PostgreSQL container for testing."""
-    with PostgresContainer("postgres:16-alpine") as postgres:
-        yield postgres
-
-
-@pytest_asyncio.fixture(scope="function")
-async def test_app(postgres_container):
-    """Create test application with test database."""
-    connection_url = postgres_container.get_connection_url()
-    async_url = connection_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
-
-    # Create database tables
-    db_settings = DatabaseSettings(db_url=async_url)
-    db = Database(db_settings)
-    await wait_till_db_ready(db)
-
-    async with db._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-
-    await db._engine.dispose()
-
-    # Create app
+@pytest_asyncio.fixture(scope="module")
+async def test_app(test_settings_override):
+    """
+    Create test application with test database.
+    Module-scoped so the app is created once per test module for better performance.
+    Uses centralized test_settings_override fixture for configuration.
+    """
     app = create_app()
-
-    # Override the get_database dependency to use test database
-    from src.app.api.dependencies import get_database
-
-    async def override_get_database():
-        test_db = Database(db_settings)
-        try:
-            yield test_db
-        finally:
-            await test_db._engine.dispose()
-
-    app.dependency_overrides[get_database] = override_get_database
-
     yield app
-
-    # Clear overrides
-    app.dependency_overrides.clear()
-
-
-async def wait_till_db_ready(db):
-    """Wait for database to be ready."""
-    for attempt in range(10):
-        try:
-            async with db._engine.begin():
-                return
-        except Exception:
-            await asyncio.sleep(0.1)
-    raise Exception("Database not ready after 10 attempts")
 
 
 @pytest_asyncio.fixture
-async def nevis_client(test_app):
-    """Create a Nevis client for testing."""
+async def nevis_client(test_app, clean_database):
+    """
+    Create a Nevis client for testing.
+    Depends on clean_database to ensure test isolation between runs.
+    """
     transport = ASGITransport(app=test_app)
     http_client = AsyncClient(transport=transport, base_url="http://test")
     client = NevisClient(base_url="http://test", client=http_client)
@@ -121,8 +77,10 @@ async def test_create_duplicate_email(nevis_client):
 
     with pytest.raises(HTTPStatusError) as exc_info:
         await nevis_client.create_client(duplicate_request)
-    assert exc_info.value.response.status_code == 400
-    assert "already exists" in exc_info.value.response.json()["detail"]
+
+    error = cast(HTTPStatusError, exc_info.value)
+    assert error.response.status_code == 400
+    assert "already exists" in error.response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -149,8 +107,6 @@ async def test_get_client(nevis_client):
 @pytest.mark.asyncio
 async def test_create_client_blank_first_name():
     """Test that creating a client with blank first name fails validation."""
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError) as exc_info:
         CreateClientRequest(
             first_name="",
@@ -159,15 +115,14 @@ async def test_create_client_blank_first_name():
             description="Test"
         )
 
-    errors = exc_info.value.errors()
+    error = cast(ValidationError, exc_info.value)
+    errors = error.errors()
     assert any(error["loc"] == ("first_name",) for error in errors)
 
 
 @pytest.mark.asyncio
 async def test_create_client_blank_last_name():
     """Test that creating a client with blank last name fails validation."""
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError) as exc_info:
         CreateClientRequest(
             first_name="John",
@@ -176,15 +131,14 @@ async def test_create_client_blank_last_name():
             description="Test"
         )
 
-    errors = exc_info.value.errors()
+    error = cast(ValidationError, exc_info.value)
+    errors = error.errors()
     assert any(error["loc"] == ("last_name",) for error in errors)
 
 
 @pytest.mark.asyncio
 async def test_create_client_whitespace_only_names():
     """Test that creating a client with whitespace-only names fails validation."""
-    from pydantic import ValidationError
-
     # Whitespace-only first name
     with pytest.raises(ValidationError) as exc_info:
         CreateClientRequest(
@@ -194,7 +148,8 @@ async def test_create_client_whitespace_only_names():
             description="Test"
         )
 
-    errors = exc_info.value.errors()
+    error = cast(ValidationError, exc_info.value)
+    errors = error.errors()
     assert any(error["loc"] == ("first_name",) for error in errors)
 
     # Whitespace-only last name
@@ -206,7 +161,8 @@ async def test_create_client_whitespace_only_names():
             description="Test"
         )
 
-    errors = exc_info.value.errors()
+    error = cast(ValidationError, exc_info.value)
+    errors = error.errors()
     assert any(error["loc"] == ("last_name",) for error in errors)
 
 

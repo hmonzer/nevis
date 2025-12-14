@@ -1,7 +1,7 @@
 from pydantic.v1 import EmailStr
 
 from src.shared.database.base_mapper import BaseEntityMapper
-from src.app.domain.models import Client
+from src.app.core.domain.models import Client
 from src.app.infrastructure.entities.client_entity import ClientEntity
 
 

@@ -1,8 +1,8 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from src.app.core.services.client_service import ClientService
 from src.client.schemas import CreateClientRequest, ClientResponse
-from src.app.services.client_service import ClientService
 from src.app.api.dependencies import get_client_service
 from src.app.api.mappers import to_client_response
 

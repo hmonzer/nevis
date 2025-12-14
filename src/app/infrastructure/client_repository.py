@@ -2,9 +2,10 @@ from uuid import UUID
 from typing import Optional
 from sqlalchemy import select
 
+from src.app.core.domain.models import Client
 from src.shared.database.base_repo import BaseRepository
 from src.shared.database.database import Database
-from src.app.domain.models import Client
+
 from src.app.infrastructure.entities.client_entity import ClientEntity
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
 

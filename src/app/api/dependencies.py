@@ -1,15 +1,17 @@
 from typing import AsyncGenerator
 from fastapi import Depends
 
+from src.app.core.domain.models import Client
+from src.app.core.services.client_service import ClientService
 from src.shared.database.database import Database
 from src.shared.database.database_settings import DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.database.entity_mapper import EntityMapper
-from src.app.domain.models import Client
+
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
-from src.app.services.client_service import ClientService
-from src.app.core.config import get_settings
+
+from src.app.config import get_settings
 
 
 async def get_database() -> AsyncGenerator[Database, None]:

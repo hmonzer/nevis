@@ -1,58 +1,10 @@
-import asyncio
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
-from testcontainers.postgres import PostgresContainer
 
-from src.shared.database.database import Database, Base
-from src.shared.database.database_settings import DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from tests.shared.database.mock_entities import UserModel, UserMapper, get_test_entity_mapper
 from tests.shared.database.mock_repository import UserRepository
-
-
-@pytest.fixture(scope="module")
-def postgres_container():
-    """Start a PostgreSQL container for testing."""
-    with PostgresContainer("postgres:16-alpine") as postgres:
-        yield postgres
-
-
-@pytest_asyncio.fixture(scope="function")
-async def db(postgres_container):
-    """Create database settings from the container."""
-    # testcontainers provides get_connection_url() which returns a sync URL
-    # We need to convert it to an async URL for asyncpg
-    connection_url = postgres_container.get_connection_url()
-    async_url = connection_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
-
-    db_settings= DatabaseSettings(db_url=async_url)
-    db= Database(db_settings)
-    await wait_till_db_ready(db)
-    yield db
-    await db._engine.dispose()
-
-# This is needed due to Colima/Mac setup and a delay in binding ports
-async def wait_till_db_ready(db):
-    max_attempts = 10
-    for attempt in range(max_attempts):
-        try:
-            async with db._engine.begin():
-                return
-        except Exception:
-            await asyncio.sleep(0.1)
-    raise Exception(f"Database not ready after {max_attempts} attempts")
-
-@pytest_asyncio.fixture
-async def clean_database(db):
-    """Clean the database before each test."""
-    # Delete all data from tables
-    async with db._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield db
 
 
 @pytest.fixture

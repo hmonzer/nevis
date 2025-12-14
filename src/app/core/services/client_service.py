@@ -3,9 +3,10 @@ from datetime import datetime, UTC
 
 from sqlalchemy.exc import IntegrityError
 
+from src.app.core.domain.models import Client
 from src.shared.database.unit_of_work import UnitOfWork
 from src.client.schemas import CreateClientRequest
-from src.app.domain.models import Client
+
 from src.app.infrastructure.client_repository import ClientRepository
 
 
