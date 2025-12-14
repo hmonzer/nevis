@@ -54,3 +54,16 @@ class DocumentChunk(BaseModel):
     embedding: list[float] | None = Field(default=None, description="Vector embedding (null in Phase 1)")
 
     model_config = {"from_attributes": True}
+
+
+class ChunkSearchResult(BaseModel):
+    """
+    Domain model representing a document chunk search result with relevance score.
+
+    This model pairs a DocumentChunk with its similarity score from vector search,
+    allowing search results to be ranked by relevance.
+    """
+    chunk: DocumentChunk = Field(..., description="The document chunk that matched the search")
+    score: float = Field(..., ge=-1.0, le=1.0, description="Cosine similarity score (-1.0 to 1.0, higher is more relevant)")
+
+    model_config = {"from_attributes": True}
