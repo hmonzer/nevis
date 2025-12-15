@@ -71,3 +71,16 @@ class ChunkSearchResult(BaseModel):
     score: float = Field(..., description="Relevance score (higher is more relevant). Range depends on scoring method.")
 
     model_config = {"from_attributes": True}
+
+
+class ClientSearchResult(BaseModel):
+    """
+    Domain model representing a client search result with relevance score.
+
+    This model pairs a Client with their fuzzy match similarity score from
+    PostgreSQL's pg_trgm extension, allowing search results to be ranked by relevance.
+    """
+    client: Client = Field(..., description="The client that matched the search")
+    score: float = Field(..., ge=0.0, le=1.0, description="Similarity score (0.0 to 1.0, higher is more relevant)")
+
+    model_config = {"from_attributes": True}

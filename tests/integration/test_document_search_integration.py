@@ -9,7 +9,7 @@ from src.app.core.services.document_processor import DocumentProcessor
 from src.app.core.services.document_service import DocumentService
 from src.app.core.services.chunking import RecursiveChunkingStrategy
 from src.app.core.services.embedding import SentenceTransformerEmbedding
-from src.app.core.services.document_search_service import DocumentChunkSearchService
+from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.core.services.reranker import CrossEncoderReranker
 from src.app.infrastructure.document_search_repository import DocumentSearchRepository
 from src.app.infrastructure.client_repository import ClientRepository
