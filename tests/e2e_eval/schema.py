@@ -10,7 +10,7 @@ class DocumentRecord(CreateDocumentRequest):
     client_id: str
 
 class Corpus(BaseModel):
-    client_records: List[ClientRecord]
+    clients: List[ClientRecord]
     documents: List[DocumentRecord]
 
 class TestItem(BaseModel):
@@ -22,10 +22,11 @@ class UseCase(BaseModel):
     id: str
     title: str
     description: Optional[str] = None
-    corpus: Corpus
     tests: List[TestItem]
 
 class EvalSuite(BaseModel):
     suite_name: str
     version: str
+    description: Optional[str] = None
+    corpus: Corpus
     use_cases: List[UseCase]

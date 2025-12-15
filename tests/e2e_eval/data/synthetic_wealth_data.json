@@ -1,38 +1,246 @@
 {
-  "suite_name": "WealthManager_Search_Eval_v1",
-  "version": "1.0",
+  "suite_name": "WealthManager_Unified_Search_Eval_v3",
+  "version": "3.0",
+  "description": "Evaluation suite for unified search across clients and documents in a wealth management context",
+  "corpus": {
+    "clients": [
+      {
+        "id": "client_sarah_jones",
+        "first_name": "Sarah",
+        "last_name": "Jones",
+        "email": "sarah.j@example.com",
+        "description": "Retired tech executive. High risk tolerance. Matriarch of Jones family."
+      },
+      {
+        "id": "client_john_doe",
+        "first_name": "John",
+        "last_name": "Doe",
+        "email": "john.doe@example.com",
+        "description": "New client. Entrepreneur. Moderate risk tolerance."
+      },
+      {
+        "id": "client_smith_family",
+        "first_name": "Arthur",
+        "last_name": "Smith",
+        "email": "arthur.smith@familyoffice.com",
+        "description": "Smith Family Office. Conservative growth. ESG focus."
+      },
+      {
+        "id": "client_david_miller",
+        "first_name": "David",
+        "last_name": "Miller",
+        "email": "d.miller@tech.com",
+        "description": "Entrepreneur. Recently exited startup. Focusing on philanthropy."
+      },
+      {
+        "id": "client_chen_trust",
+        "first_name": "Li",
+        "last_name": "Chen",
+        "email": "li.chen@global.com",
+        "description": "Trustee for Chen Global Trust. Intergenerational wealth transfer focus."
+      },
+      {
+        "id": "client_robert_fox",
+        "first_name": "Robert",
+        "last_name": "Fox",
+        "email": "bob.fox@partners.com",
+        "description": "Private Equity Partner. Complex tax situation with multiple K-1s."
+      }
+    ],
+    "documents": [
+      {
+        "id": "doc_jones_passport",
+        "client_id": "client_sarah_jones",
+        "title": "Jones Family Trust - KYC Passport Scan",
+        "content": "PASSPORT DETAILS\nName: Sarah Jones\nNationality: USA\nPassport No: A12345678\nExpiry: 15 May 2028\nDOB: 1960-05-15\nIssuing Authority: USDOS"
+      },
+      {
+        "id": "doc_jones_rpq",
+        "client_id": "client_sarah_jones",
+        "title": "Risk Profile Questionnaire 2024",
+        "content": "Client indicates high tolerance for volatility. Investment horizon: 20+ years. Primary goal: Capital appreciation over preservation. Experience: Sophisticated investor."
+      },
+      {
+        "id": "doc_doe_passport",
+        "client_id": "client_john_doe",
+        "title": "John Doe Passport Scan",
+        "content": "PASSPORT DETAILS\nName: John Doe\nNationality: Canada\nPassport No: C98765432\nExpiry: 20 Dec 2030\nDOB: 1985-02-20\nIssuing Authority: Canadian Government"
+      },
+      {
+        "id": "doc_doe_rpq",
+        "client_id": "client_john_doe",
+        "title": "Risk Profile Questionnaire 2024 - Doe",
+        "content": "Client prefers balanced approach. Investment horizon: 10-15 years. Goal: Growth and Income."
+      },
+      {
+        "id": "doc_doe_utility_bill",
+        "client_id": "client_john_doe",
+        "title": "Utility Bill - Proof of Address",
+        "content": "ELECTRICITY BILL\nCustomer: John Doe\nService Address: 456 Maple Avenue, Toronto, ON M5V 2T6\nBilling Date: Oct 01 2023\nThis document serves as proof of residence."
+      },
+      {
+        "id": "doc_smith_ips_2023",
+        "client_id": "client_smith_family",
+        "title": "Smith Family IPS 2023",
+        "content": "INVESTMENT POLICY STATEMENT\nTarget Allocation: 40% Equities, 60% Fixed Income.\nLiquidity Constraints: $500k monthly cash requirement.\nESG Mandate: No investments in tobacco, firearms, or fossil fuel extraction companies.\nPerformance Benchmark: 60/40 Blended Index."
+      },
+      {
+        "id": "doc_smith_portfolio_review",
+        "client_id": "client_smith_family",
+        "title": "Q3 2023 Portfolio Review",
+        "content": "Portfolio performance: +4.2%. Current Allocation: 45% Equity, 55% Fixed Income (Drift noted). Holdings include: Apple, Microsoft, Tesla, GreenEnergy ETF. No prohibited assets detected."
+      },
+      {
+        "id": "doc_miller_note_oct",
+        "client_id": "client_david_miller",
+        "title": "Meeting Note - Oct 12 2023",
+        "content": "Met with David at the club. He mentioned he is considering buying a vineyard in France next summer (2024). Wants to discuss liquidity for a €2M down payment. Also expressed concern about tech sector overexposure."
+      },
+      {
+        "id": "doc_miller_note_dec",
+        "client_id": "client_david_miller",
+        "title": "Call Summary - Dec 05 2023",
+        "content": "David called to update beneficiary details. His daughter Emily is turning 18 soon. He wants to set up a separate trust for her education."
+      },
+      {
+        "id": "doc_chen_trust_deed",
+        "client_id": "client_chen_trust",
+        "title": "Chen Global Trust - Deed of Settlement",
+        "content": "TRUST DEED\nSettlor: Li Chen\nTrustees: Global Trust Co.\nBeneficiaries: Lucas Chen (Son), Emily Chen (Daughter), and future lineal descendants.\nDistribution Rules: Principal accessible only after beneficiaries reach age 30."
+      },
+      {
+        "id": "doc_chen_will",
+        "client_id": "client_chen_trust",
+        "title": "Last Will and Testament - Li Chen",
+        "content": "I, Li Chen, residing in New York, hereby declare... All personal property to spouse. Residual estate to pour over into the Chen Global Trust."
+      },
+      {
+        "id": "doc_fox_k1_greentech",
+        "client_id": "client_robert_fox",
+        "title": "Schedule K-1 (Form 1065) - GreenTech Ventures",
+        "content": "Partner's Share of Income, Deductions, Credits, etc.\nPartner: Robert Fox\nPartnership: GreenTech Ventures LP\nOrdinary Business Income: $450,000\nNet Rental Real Estate Income: ($12,000)"
+      },
+      {
+        "id": "doc_fox_1099",
+        "client_id": "client_robert_fox",
+        "title": "Consolidated 1099 - 2023",
+        "content": "Form 1099-DIV, 1099-INT, 1099-B.\nTotal Ordinary Dividends: $25,000\nTotal Interest Income: $8,400\nBroker: Morgan Stanley"
+      }
+    ]
+  },
   "use_cases": [
     {
       "id": "use_case_onboarding",
-      "title": "High Net Worth Onboarding",
-      "description": "Tests retrieval of identity docs and initial risk assessments.",
-      "corpus": {
-        "client_records": [
-          {
-            "id": "client_sarah_jones",
-            "first_name": "Sarah",
-            "last_name": "Jones",
-            "email": "sarah.j@example.com",
-            "description": "Matriarch of Jones family. Retired tech executive. High risk tolerance."
-          }
-        ],
-        "documents": [
-          {
-            "id": "doc_sarah_passport",
-            "client_id": "client_sarah_jones",
-            "title": "Jones Family Trust - KYC Passport Scan",
-            "content": "Copy of passport for Sarah Jones. Expiry 2028. Nationality: US. DOB: 1960-05-15."
-          }
-        ]
-      },
+      "title": "Onboarding & KYC Retrieval",
+      "description": "Tests retrieval of identity docs and client records for initial risk assessments",
       "tests": [
         {
-          "query_id": "q_001",
-          "query_text": "Sarah Jones passport",
-          "expected_result_ids": [
-            "doc_sarah_passport", 
-            "client_sarah_jones"
-          ]
+          "query_id": "q_onboarding_01",
+          "query_text": "Sarah Jones passport expiry",
+          "expected_result_ids": ["doc_jones_passport"]
+        },
+        {
+          "query_id": "q_onboarding_02",
+          "query_text": "Jones risk tolerance",
+          "expected_result_ids": ["doc_jones_rpq"]
+        },
+        {
+          "query_id": "q_onboarding_03",
+          "query_text": "John Doe passport",
+          "expected_result_ids": ["client_john_doe", "doc_doe_passport"]
+        },
+        {
+          "query_id": "q_onboarding_04",
+          "query_text": "proof of address for John Doe",
+          "expected_result_ids": ["doc_doe_utility_bill"]
+        }
+      ]
+    },
+    {
+      "id": "use_case_ips_compliance",
+      "title": "Investment Policy & Compliance",
+      "description": "Tests retrieval of constraints and asset allocation rules",
+      "tests": [
+        {
+          "query_id": "q_ips_01",
+          "query_text": "Smith family forbidden assets",
+          "expected_result_ids": ["doc_smith_ips_2023"]
+        },
+        {
+          "query_id": "q_ips_02",
+          "query_text": "Smith liquidity requirement",
+          "expected_result_ids": ["doc_smith_ips_2023"]
+        },
+        {
+          "query_id": "q_ips_03",
+          "query_text": "ESG focus conservative growth",
+          "expected_result_ids": ["client_smith_family", "doc_smith_ips_2023"]
+        }
+      ]
+    },
+    {
+      "id": "use_case_meeting_notes",
+      "title": "Client Interactions & Life Events",
+      "description": "Tests retrieval from unstructured meeting notes",
+      "tests": [
+        {
+          "query_id": "q_notes_01",
+          "query_text": "Miller property purchase France",
+          "expected_result_ids": ["doc_miller_note_oct"]
+        },
+        {
+          "query_id": "q_notes_02",
+          "query_text": "David Miller daughter trust",
+          "expected_result_ids": ["doc_miller_note_dec"]
+        },
+        {
+          "query_id": "q_notes_03",
+          "query_text": "entrepreneur philanthropy",
+          "expected_result_ids": ["client_david_miller"]
+        }
+      ]
+    },
+    {
+      "id": "use_case_estate_planning",
+      "title": "Estate Planning & Trusts",
+      "description": "Tests retrieval of complex legal structures and beneficiaries",
+      "tests": [
+        {
+          "query_id": "q_estate_01",
+          "query_text": "Who are the beneficiaries of the Chen Trust?",
+          "expected_result_ids": ["doc_chen_trust_deed"]
+        },
+        {
+          "query_id": "q_estate_02",
+          "query_text": "Chen Trust distribution age",
+          "expected_result_ids": ["doc_chen_trust_deed"]
+        },
+        {
+          "query_id": "q_estate_03",
+          "query_text": "intergenerational wealth transfer",
+          "expected_result_ids": ["client_chen_trust"]
+        }
+      ]
+    },
+    {
+      "id": "use_case_tax_reporting",
+      "title": "Tax & Reporting",
+      "description": "Tests specific document retrieval for tax compliance",
+      "tests": [
+        {
+          "query_id": "q_tax_01",
+          "query_text": "Robert Fox K-1 GreenTech income",
+          "expected_result_ids": ["doc_fox_k1_greentech"]
+        },
+        {
+          "query_id": "q_tax_02",
+          "query_text": "Fox 1099 dividend income",
+          "expected_result_ids": ["doc_fox_1099"]
+        },
+        {
+          "query_id": "q_tax_03",
+          "query_text": "Private Equity Partner tax",
+          "expected_result_ids": ["client_robert_fox"]
         }
       ]
     }
