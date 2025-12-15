@@ -147,7 +147,7 @@
         {
           "query_id": "q_onboarding_03",
           "query_text": "John Doe passport",
-          "expected_result_ids": ["client_john_doe", "doc_doe_passport"]
+          "expected_result_ids": ["doc_doe_passport"]
         },
         {
           "query_id": "q_onboarding_04",

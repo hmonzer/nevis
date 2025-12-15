@@ -3,81 +3,12 @@ import pytest_asyncio
 from pathlib import Path
 from typing import Any
 from ranx import Qrels, Run, evaluate
-from sentence_transformers import SentenceTransformer, CrossEncoder
 
 from src.app.core.domain.models import SearchRequest
-from src.app.core.services.chunks_search_service import DocumentChunkSearchService
-from src.app.core.services.document_search_service import DocumentSearchService
-from src.app.core.services.client_search_service import ClientSearchService
 from src.app.core.services.search_service import SearchService
-from src.app.core.services.embedding import SentenceTransformerEmbedding
-from src.app.core.services.reranker import CrossEncoderReranker
-from src.app.infrastructure.document_search_repository import DocumentSearchRepository
-from src.app.infrastructure.client_search_repository import ClientSearchRepository
-from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
-from src.app.infrastructure.mappers.client_mapper import ClientMapper
-from src.app.infrastructure.document_repository import DocumentRepository
-from src.app.infrastructure.mappers.document_mapper import DocumentMapper
 
 from tests.e2e_eval.data_setup import load_eval_suite, setup_corpus
 from tests.e2e_eval.evaluation import EvaluationMetrics, UseCaseResult, EvaluationReporter
-
-
-# --- Fixtures reusing conftest and dependencies ---
-
-@pytest_asyncio.fixture(scope="module")
-def sentence_transformer_model():
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-@pytest_asyncio.fixture(scope="module")
-def embedding_service(sentence_transformer_model):
-    return SentenceTransformerEmbedding(sentence_transformer_model)
-
-@pytest_asyncio.fixture(scope="module")
-def cross_encoder_model():
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-@pytest_asyncio.fixture(scope="module")
-def reranker_service(cross_encoder_model):
-    return CrossEncoderReranker(cross_encoder_model)
-
-@pytest_asyncio.fixture
-def document_search_repository(clean_database):
-    return DocumentSearchRepository(clean_database, DocumentChunkMapper())
-
-@pytest_asyncio.fixture
-def client_search_repository(clean_database):
-    return ClientSearchRepository(clean_database, ClientMapper())
-
-@pytest_asyncio.fixture
-def chunk_search_service(embedding_service, document_search_repository, reranker_service):
-    return DocumentChunkSearchService(
-        embedding_service=embedding_service,
-        search_repository=document_search_repository,
-        reranker_service=reranker_service,
-    )
-
-@pytest_asyncio.fixture
-def document_repository(clean_database):
-    return DocumentRepository(clean_database, DocumentMapper())
-
-@pytest_asyncio.fixture
-def document_search_service(chunk_search_service, document_repository):
-    return DocumentSearchService(
-        chunk_search_service=chunk_search_service,
-        document_repository=document_repository,
-    )
-
-@pytest_asyncio.fixture
-def client_search_service(client_search_repository):
-    return ClientSearchService(search_repository=client_search_repository)
-
-@pytest_asyncio.fixture
-def unified_search_service(client_search_service, document_search_service):
-    return SearchService(
-        client_search_service=client_search_service,
-        document_search_service=document_search_service,
-    )
 
 
 def build_qrels_dict(test: Any, id_map: dict[str, Any]) -> dict[str, int]:
@@ -130,9 +61,46 @@ def build_run_dict_entry(results: list[Any]) -> dict[str, float]:
     return run_entry
 
 
+def log_query_results_compact(
+    query_text: str,
+    expected_ids: list[str],
+    results: list[Any],
+    reverse_map: dict[str, str],
+) -> None:
+    """
+    Log compact comparison of expected vs retrieved results.
+
+    Args:
+        query_text: The search query
+        expected_ids: List of expected synthetic IDs
+        results: List of SearchResult objects
+        reverse_map: Mapping from UUID to synthetic ID
+    """
+    # Build retrieved synthetic IDs
+    retrieved_ids = []
+    for result in results:
+        entity_uuid = str(result.entity.id)
+        synthetic_id = reverse_map.get(entity_uuid, f"UNKNOWN_{entity_uuid[:8]}")
+        retrieved_ids.append(synthetic_id)
+
+    # Show comparison
+    expected_set = set(expected_ids)
+    retrieved_set = set(retrieved_ids)
+    missing = expected_set - retrieved_set
+    correct = expected_set & retrieved_set
+
+    # Only log if there are issues
+    if missing:
+        print(f"    ⚠️  Query: '{query_text[:60]}'")
+        print(f"        Expected: {', '.join(expected_ids)}")
+        print(f"        Retrieved: {', '.join(retrieved_ids[:5])}{'...' if len(retrieved_ids) > 5 else ''}")
+        print(f"        ✅ Correct: {len(correct)}/{len(expected_set)} | ❌ Missing: {', '.join(missing)}")
+
+
 async def run_eval_use_case(
     use_case: Any,
     id_map: dict[str, Any],
+    reverse_map: dict[str, str],
     search_service: SearchService,
     top_k: int = 10,
 ) -> UseCaseResult | None:
@@ -142,6 +110,7 @@ async def run_eval_use_case(
     Args:
         use_case: Use case containing tests
         id_map: Mapping from synthetic IDs to actual database IDs
+        reverse_map: Mapping from UUIDs to synthetic IDs (for logging)
         search_service: Unified search service to evaluate
         top_k: Number of results to retrieve
 
@@ -168,6 +137,9 @@ async def run_eval_use_case(
         num_documents = sum(1 for r in results if r.type == 'DOCUMENT')
         print(f"  Query '{test.query_text[:50]}...': {len(results)} total results "
               f"({num_clients} clients, {num_documents} documents)")
+
+        # Log details for queries with issues
+        log_query_results_compact(test.query_text, test.expected_result_ids, results, reverse_map)
 
         # Build system output scores
         run_dict[test.query_id] = build_run_dict_entry(results)
@@ -227,6 +199,8 @@ async def test_wealth_manager_eval(
     print(f"Setting up corpus...")
     print(f"{'='*60}")
     id_map = await setup_corpus(suite, nevis_client)
+    # Create reverse map for logging (UUID -> synthetic ID)
+    reverse_map = {str(uuid_val): synthetic_id for synthetic_id, uuid_val in id_map.items()}
     print(f"✅ Corpus setup complete: {len(id_map)} entities created")
 
     # 3. Run all use cases and collect results
@@ -238,6 +212,7 @@ async def test_wealth_manager_eval(
             result = await run_eval_use_case(
                 use_case=use_case,
                 id_map=id_map,
+                reverse_map=reverse_map,
                 search_service=unified_search_service,
                 top_k=10,
             )

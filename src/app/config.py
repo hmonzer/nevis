@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # S3 Storage Settings
     s3_bucket_name: str = "nevis-documents"
     s3_endpoint_url: str | None = None  # For LocalStack, set to http://localhost:4566
-    aws_region: str = "us-east-1"
+    aws_region: str = "eu-west-1"
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
 
