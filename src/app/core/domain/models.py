@@ -84,3 +84,16 @@ class ClientSearchResult(BaseModel):
     score: float = Field(..., ge=0.0, le=1.0, description="Similarity score (0.0 to 1.0, higher is more relevant)")
 
     model_config = {"from_attributes": True}
+
+
+class DocumentSearchResult(BaseModel):
+    """
+    Domain model representing a document search result with relevance score.
+
+    This model aggregates chunk-level search results to the document level,
+    using the highest score among all matching chunks as the document's relevance score.
+    """
+    document: Document = Field(..., description="The document that matched the search")
+    score: float = Field(..., description="Relevance score (higher is more relevant). Highest score from matching chunks.")
+
+    model_config = {"from_attributes": True}

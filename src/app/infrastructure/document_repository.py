@@ -21,6 +21,23 @@ class DocumentRepository(BaseRepository[DocumentEntity, Document]):
             select(DocumentEntity).where(DocumentEntity.id == document_id)
         )
 
+    async def get_by_ids(self, document_ids: list[UUID]) -> list[Document]:
+        """
+        Get multiple documents by their IDs in a single query.
+
+        Args:
+            document_ids: List of document IDs to fetch
+
+        Returns:
+            List of Document domain models. Documents not found are omitted from results.
+        """
+        if not document_ids:
+            return []
+
+        return await self.find_all(
+            select(DocumentEntity).where(DocumentEntity.id.in_(document_ids))
+        )
+
     async def get_client_document_by_id(
         self, document_id: UUID, client_id: UUID
     ) -> Optional[Document]:
