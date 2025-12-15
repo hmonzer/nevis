@@ -1,0 +1,73 @@
+[
+  {
+    "suite_name": "client_and_document_retrieval",
+    "suite_id": "912412d2-8d77-4342-8499-aaa518178a1f",
+    "use_cases": [
+      {
+        "use_case_name": "equity_research_for_tech_stocks",
+        "use_case_id": "ad2b77a4-4537-45a1-9626-613589c6292b",
+        "user_id": "a9e6b3de-29d2-43e5-8a21-7538917cde54",
+        "corpus": [
+          {
+            "document_id": "doc_1",
+            "metadata": {
+              "title": "Market Analysis: The Rise of AI in Cloud Computing",
+              "author_id": "user_123",
+              "permissions": ["all_users"],
+              "created_at": "2023-01-15T10:30:00Z"
+            },
+            "content": "Generative AI is transforming the cloud computing landscape. Major players like AWS, Google Cloud, and Azure are heavily investing in AI-driven services. This report details the key trends, market projections, and competitive analysis. It covers advancements in machine learning, neural networks, and large language models (LLMs) and their impact on cloud service offerings. The synergy between AI and cloud is expected to unlock new revenue streams."
+          },
+          {
+            "document_id": "doc_2",
+            "metadata": {
+              "title": "Investment Guide: Top Semiconductor Stocks for 2024",
+              "author_id": "user_456",
+              "permissions": ["all_users"],
+              "created_at": "2023-02-20T14:00:00Z"
+            },
+            "content": "The semiconductor industry is at the heart of the current tech boom. This guide reviews the leading semiconductor companies, including Nvidia, TSMC, and AMD. We analyze their financial performance, product roadmaps, and strategic positioning. The demand for advanced chips, driven by AI and high-performance computing, is a primary focus. We also assess the geopolitical risks associated with the supply chain. This document is essential for any tech investor."
+          },
+          {
+            "document_id": "doc_3",
+            "metadata": {
+              "title": "Quarterly Earnings Report: Innovations Inc.",
+              "author_id": "user_789",
+              "permissions": ["all_users"],
+              "created_at": "2023-03-05T09:00:00Z"
+            },
+            "content": "Innovations Inc. reported strong Q4 earnings, driven by its new line of quantum computing hardware. The company's revenue grew by 25% year-over-year. The report highlights significant progress in their R&D division, particularly in the development of fault-tolerant quantum bits. The outlook for the next fiscal year is optimistic, with planned expansion into new international markets. The CEO emphasized the role of their proprietary technology in achieving these results."
+          },
+          {
+            "document_id": "doc_4",
+            "client_id": "client_a",
+            "metadata": {
+              "client_name": "John Atherton",
+              "financial_advisor_id": "fa_1",
+              "permissions": ["fa_1"],
+              "created_at": "2023-03-05T09:00:00Z"
+            },
+            "content": "John Atherton is a high-net-worth individual with a strong interest in technology investments. His portfolio is heavily weighted towards large-cap tech stocks like Apple and Microsoft. He has recently expressed interest in diversifying into emerging tech, specifically artificial intelligence and biotechnology. Atherton is risk-averse and prefers long-term growth stocks over speculative assets. His financial goals include wealth preservation and funding philanthropic activities. Regular portfolio reviews are scheduled to monitor performance."
+          }
+        ],
+        "tests": [
+          {
+            "query_id": "q_1",
+            "query_text": "AI impact on cloud services",
+            "expected_result_ids": ["doc_1", "doc_2"]
+          },
+          {
+            "query_id": "q_2",
+            "query_text": "leading semiconductor companies",
+            "expected_result_ids": ["doc_2", "doc_1"]
+          },
+          {
+            "query_id": "q_3",
+            "query_text": "John Atherton's investment preferences",
+            "expected_result_ids": ["doc_4"]
+          }
+        ]
+      }
+    ]
+  }
+]
