@@ -2,23 +2,16 @@
 from uuid import uuid4
 
 import pytest
-from sentence_transformers import CrossEncoder
 
 from src.app.core.services.reranker import CrossEncoderReranker
 from src.app.core.domain.models import DocumentChunk, ChunkSearchResult
+from src.app.api.dependencies import get_cross_encoder_model
 
 
 @pytest.fixture
-def cross_encoder_model():
-    """Create a CrossEncoder model instance for testing."""
-    # Using a smaller model for faster tests - you can use BAAI/bge-reranker-v2-m3 in production
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-
-@pytest.fixture
-def reranker(cross_encoder_model):
+def reranker():
     """Create a CrossEncoderReranker instance."""
-    return CrossEncoderReranker(cross_encoder_model)
+    return CrossEncoderReranker(get_cross_encoder_model())
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import AsyncGenerator
 from fastapi import Depends
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 
 from src.app.core.domain.models import Client, Document, DocumentChunk
 from src.app.core.services.client_service import ClientService
@@ -121,9 +121,10 @@ def get_s3_storage() -> S3BlobStorage:
 
 def get_chunking_service() -> RecursiveChunkingStrategy:
     """Get chunking service instance with default recursive strategy."""
+    settings = get_settings()
     return RecursiveChunkingStrategy(
-        chunk_size=1000,
-        chunk_overlap=200
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap
     )
 
 
@@ -133,8 +134,8 @@ def get_sentence_transformer_model() -> SentenceTransformer:
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
-    model_name = "all-MiniLM-L6-v2"
-    # model_name = "google/embeddinggemma-300m"
+    settings = get_settings()
+    model_name = settings.embedding_model_name
 
     # Try to find the model in the models directory
     base_dir = Path(__file__).parent.parent.parent  # Go up to project root
@@ -146,6 +147,27 @@ def get_sentence_transformer_model() -> SentenceTransformer:
         return SentenceTransformer(str(model_path))
     else:
         return SentenceTransformer(model_name)
+
+
+def get_cross_encoder_model() -> CrossEncoder:
+    """
+    Get CrossEncoder model instance for reranking.
+
+    Checks for local model first, otherwise downloads from HuggingFace.
+    """
+    settings = get_settings()
+    model_name = settings.reranker_model_name
+
+    # Try to find the model in the models directory
+    base_dir = Path(__file__).parent.parent.parent  # Go up to project root
+    models_dir = base_dir / "models"
+    model_path = models_dir / model_name
+
+    # If local model exists, use it; otherwise download from HuggingFace
+    if model_path.exists() and os.path.isdir(model_path):
+        return CrossEncoder(str(model_path))
+    else:
+        return CrossEncoder(model_name)
 
 
 def get_embedding_service(

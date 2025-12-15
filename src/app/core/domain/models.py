@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class Client(BaseModel):
@@ -97,3 +97,22 @@ class DocumentSearchResult(BaseModel):
     score: float = Field(..., description="Relevance score (higher is more relevant). Highest score from matching chunks.")
 
     model_config = {"from_attributes": True}
+
+
+class SearchRequest(BaseModel):
+    """
+    Request model for search operations across all search services.
+
+    Provides centralized validation for common search parameters.
+    """
+    query: str = Field(..., min_length=1, description="Search query string")
+    top_k: int = Field(default=10, gt=0, le=100, description="Maximum number of results to return")
+    threshold: float = Field(default=0.5, ge=-1.0, le=1.0, description="Minimum similarity threshold for results")
+
+    @field_validator("query")
+    @classmethod
+    def validate_query_not_blank(cls, v: str) -> str:
+        """Ensure query is not just whitespace."""
+        if not v.strip():
+            raise ValueError("Search query cannot be empty or whitespace only")
+        return v.strip()
