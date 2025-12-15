@@ -10,6 +10,11 @@ from src.app.core.services.document_service import DocumentService
 from src.app.core.services.document_processor import DocumentProcessor
 from src.app.core.services.chunking import RecursiveChunkingStrategy
 from src.app.core.services.embedding import SentenceTransformerEmbedding
+from src.app.core.services.reranker import CrossEncoderReranker
+from src.app.core.services.chunks_search_service import DocumentChunkSearchService
+from src.app.core.services.document_search_service import DocumentSearchService
+from src.app.core.services.client_search_service import ClientSearchService
+from src.app.core.services.search_service import SearchService
 from src.shared.database.database import Database, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.database.entity_mapper import EntityMapper
@@ -18,6 +23,8 @@ from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettin
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
 from src.app.infrastructure.document_chunk_repository import DocumentChunkRepository
+from src.app.infrastructure.document_search_repository import DocumentSearchRepository
+from src.app.infrastructure.client_search_repository import ClientSearchRepository
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
 from src.app.infrastructure.mappers.document_mapper import DocumentMapper
 from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
@@ -202,4 +209,69 @@ def get_document_service(
         unit_of_work=unit_of_work,
         blob_storage=blob_storage,
         document_processor=document_processor,
+    )
+
+
+def get_reranker_service(
+    cross_encoder_model: CrossEncoder = Depends(get_cross_encoder_model)
+) -> CrossEncoderReranker:
+    """Get reranker service instance."""
+    return CrossEncoderReranker(cross_encoder_model)
+
+
+def get_document_search_repository(
+    db: Database = Depends(get_database),
+    mapper: DocumentChunkMapper = Depends(get_document_chunk_mapper)
+) -> DocumentSearchRepository:
+    """Get document search repository instance."""
+    return DocumentSearchRepository(db, mapper)
+
+
+def get_client_search_repository(
+    db: Database = Depends(get_database),
+    mapper: ClientMapper = Depends(get_client_mapper)
+) -> ClientSearchRepository:
+    """Get client search repository instance."""
+    return ClientSearchRepository(db, mapper)
+
+
+def get_document_chunk_search_service(
+    embedding_service: SentenceTransformerEmbedding = Depends(get_embedding_service),
+    search_repository: DocumentSearchRepository = Depends(get_document_search_repository),
+    reranker_service: CrossEncoderReranker = Depends(get_reranker_service)
+) -> DocumentChunkSearchService:
+    """Get document chunk search service instance."""
+    return DocumentChunkSearchService(
+        embedding_service=embedding_service,
+        search_repository=search_repository,
+        reranker_service=reranker_service,
+    )
+
+
+def get_document_search_service(
+    chunk_search_service: DocumentChunkSearchService = Depends(get_document_chunk_search_service),
+    document_repository: DocumentRepository = Depends(get_document_repository)
+) -> DocumentSearchService:
+    """Get document search service instance."""
+    return DocumentSearchService(
+        chunk_search_service=chunk_search_service,
+        document_repository=document_repository,
+    )
+
+
+def get_client_search_service(
+    search_repository: ClientSearchRepository = Depends(get_client_search_repository)
+) -> ClientSearchService:
+    """Get client search service instance."""
+    return ClientSearchService(search_repository=search_repository)
+
+
+def get_search_service(
+    client_search_service: ClientSearchService = Depends(get_client_search_service),
+    document_search_service: DocumentSearchService = Depends(get_document_search_service)
+) -> SearchService:
+    """Get unified search service instance."""
+    return SearchService(
+        client_search_service=client_search_service,
+        document_search_service=document_search_service,
     )

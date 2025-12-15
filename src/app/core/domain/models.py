@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal, Union
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -116,3 +117,18 @@ class SearchRequest(BaseModel):
         if not v.strip():
             raise ValueError("Search query cannot be empty or whitespace only")
         return v.strip()
+
+
+class SearchResult(BaseModel):
+    """
+    Unified search result that can contain either a Client or Document.
+
+    Used by the unified SearchService to return heterogeneous search results
+    with consistent ranking and scoring.
+    """
+    type: Literal["CLIENT", "DOCUMENT"] = Field(..., description="Type of entity in the result")
+    entity: Union[Client, Document] = Field(..., description="The actual entity (Client or Document)")
+    score: float = Field(..., description="Relevance score from the search")
+    rank: int = Field(..., ge=1, description="Rank position in the result set (1-based)")
+
+    model_config = {"from_attributes": True}
