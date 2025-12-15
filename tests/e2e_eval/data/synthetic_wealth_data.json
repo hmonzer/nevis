@@ -1,0 +1,40 @@
+{
+  "suite_name": "WealthManager_Search_Eval_v1",
+  "version": "1.0",
+  "use_cases": [
+    {
+      "id": "use_case_onboarding",
+      "title": "High Net Worth Onboarding",
+      "description": "Tests retrieval of identity docs and initial risk assessments.",
+      "corpus": {
+        "client_records": [
+          {
+            "id": "client_sarah_jones",
+            "first_name": "Sarah",
+            "last_name": "Jones",
+            "email": "sarah.j@example.com",
+            "description": "Matriarch of Jones family. Retired tech executive. High risk tolerance."
+          }
+        ],
+        "documents": [
+          {
+            "id": "doc_sarah_passport",
+            "client_id": "client_sarah_jones",
+            "title": "Jones Family Trust - KYC Passport Scan",
+            "content": "Copy of passport for Sarah Jones. Expiry 2028. Nationality: US. DOB: 1960-05-15."
+          }
+        ]
+      },
+      "tests": [
+        {
+          "query_id": "q_001",
+          "query_text": "Sarah Jones passport",
+          "expected_result_ids": [
+            "doc_sarah_passport", 
+            "client_sarah_jones"
+          ]
+        }
+      ]
+    }
+  ]
+}
