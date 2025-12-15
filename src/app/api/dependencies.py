@@ -1,4 +1,5 @@
 import os
+import threading
 from pathlib import Path
 from typing import AsyncGenerator
 from fastapi import Depends
@@ -35,6 +36,10 @@ from src.app.config import get_settings
 # Global singleton instances for ML models (loaded once, reused across all requests)
 _sentence_transformer_model: SentenceTransformer | None = None
 _cross_encoder_model: CrossEncoder | None = None
+
+# Thread locks to prevent concurrent model initialization (double-checked locking pattern)
+_sentence_transformer_lock = threading.Lock()
+_cross_encoder_lock = threading.Lock()
 
 
 async def get_database() -> AsyncGenerator[Database, None]:
@@ -142,82 +147,92 @@ def get_chunking_service() -> RecursiveChunkingStrategy:
 
 def get_sentence_transformer_model() -> SentenceTransformer:
     """
-    Get SentenceTransformer model instance (singleton).
+    Get SentenceTransformer model instance (singleton with thread-safe initialization).
 
-    This model is loaded once as a global variable and reused across all requests to:
-    1. Prevent concurrent model initialization (not thread-safe)
-    2. Save memory (~400MB per model instance)
-    3. Improve performance (model loading takes 2-5 seconds)
+    Uses double-checked locking pattern to ensure:
+    1. Only one thread initializes the model (prevents concurrent initialization issues)
+    2. Fast path for already-loaded model (no lock needed)
+    3. Memory efficient (~400MB shared across all requests)
+    4. Performance optimized (model loading happens only once)
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
     global _sentence_transformer_model
 
-    # Return cached model if already loaded
+    # Fast path: return cached model if already loaded (no lock needed)
     if _sentence_transformer_model is not None:
         return _sentence_transformer_model
 
-    # Load model for the first time
-    settings = get_settings()
-    model_name = settings.embedding_model_name
+    # Slow path: acquire lock and double-check before loading
+    with _sentence_transformer_lock:
+        # Double-check after acquiring lock (another thread may have loaded it)
+        if _sentence_transformer_model is not None:
+            return _sentence_transformer_model
 
-    # Try to find the model in the models directory
-    base_dir = Path(__file__).parent.parent.parent  # Go up to project root
-    models_dir = base_dir / "models"
-    model_path = models_dir / model_name
+        # Load model for the first time (only one thread will reach here)
+        settings = get_settings()
+        model_name = settings.embedding_model_name
 
-    # If local model exists, use it; otherwise download from HuggingFace
-    # Explicitly set device='cpu' and local_files_only=False to avoid meta tensor issues
-    if model_path.exists() and os.path.isdir(model_path):
-        _sentence_transformer_model = SentenceTransformer(
-            str(model_path),
-            device='cpu',
-            local_files_only=False
-        )
-    else:
-        _sentence_transformer_model = SentenceTransformer(
-            model_name,
-            device='cpu',
-            local_files_only=False,
-            trust_remote_code=True
-        )
+        # Try to find the model in the models directory
+        base_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        models_dir = base_dir / "models"
+        model_path = models_dir / model_name
 
-    return _sentence_transformer_model
+        # If local model exists, use it; otherwise download from HuggingFace
+        if model_path.exists() and os.path.isdir(model_path):
+            _sentence_transformer_model = SentenceTransformer(
+                str(model_path),
+                device='cpu'
+            )
+        else:
+            _sentence_transformer_model = SentenceTransformer(
+                model_name,
+                device='cpu'
+            )
+
+        return _sentence_transformer_model
 
 
 def get_cross_encoder_model() -> CrossEncoder:
     """
-    Get CrossEncoder model instance for reranking (singleton).
+    Get CrossEncoder model instance for reranking (singleton with thread-safe initialization).
 
-    This model is loaded once as a global variable and reused across all requests to:
-    1. Prevent concurrent model initialization (not thread-safe)
-    2. Save memory (~400MB per model instance)
-    3. Improve performance (model loading takes 2-5 seconds)
+    Uses double-checked locking pattern to ensure:
+    1. Only one thread initializes the model (prevents concurrent initialization issues)
+    2. Fast path for already-loaded model (no lock needed)
+    3. Memory efficient (~400MB shared across all requests)
+    4. Performance optimized (model loading happens only once)
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
     global _cross_encoder_model
 
-    # Return cached model if already loaded
+    # Fast path: return cached model if already loaded (no lock needed)
     if _cross_encoder_model is not None:
         return _cross_encoder_model
 
-    # Load model for the first time
-    settings = get_settings()
-    model_name = settings.reranker_model_name
+    # Slow path: acquire lock and double-check before loading
+    with _cross_encoder_lock:
+        # Double-check after acquiring lock (another thread may have loaded it)
+        if _cross_encoder_model is not None:
+            return _cross_encoder_model
 
-    # Try to find the model in the models directory
-    base_dir = Path(__file__).parent.parent.parent  # Go up to project root
-    models_dir = base_dir / "models"
-    model_path = models_dir / model_name
+        # Load model for the first time (only one thread will reach here)
+        settings = get_settings()
+        model_name = settings.reranker_model_name
 
-    # If local model exists, use it; otherwise download from HuggingFace
-    if model_path.exists() and os.path.isdir(model_path):
-        _cross_encoder_model = CrossEncoder(str(model_path))
-    else:
-        _cross_encoder_model = CrossEncoder(model_name)
+        # Try to find the model in the models directory
+        base_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        models_dir = base_dir / "models"
+        model_path = models_dir / model_name
 
-    return _cross_encoder_model
+        # If local model exists, use it; otherwise download from HuggingFace
+        if model_path.exists() and os.path.isdir(model_path):
+            _cross_encoder_model = CrossEncoder(str(model_path))
+        else:
+            _cross_encoder_model = CrossEncoder(model_name)
+
+        return _cross_encoder_model
 
 
 def get_embedding_service(

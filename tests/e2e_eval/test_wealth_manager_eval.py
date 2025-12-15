@@ -173,6 +173,7 @@ async def run_eval_use_case(
 async def test_wealth_manager_eval(
     nevis_client,  # Used for data setup via API
     unified_search_service,  # Unified search service to evaluate
+    document_repository,  # Repository for efficient batch document status checking
     clean_database,  # Ensures fresh DB
     s3_storage  # Ensures S3
 ):
@@ -198,7 +199,7 @@ async def test_wealth_manager_eval(
     print(f"\n{'='*60}")
     print(f"Setting up corpus...")
     print(f"{'='*60}")
-    id_map = await setup_corpus(suite, nevis_client)
+    id_map = await setup_corpus(suite, nevis_client, document_repository)
     # Create reverse map for logging (UUID -> synthetic ID)
     reverse_map = {str(uuid_val): synthetic_id for synthetic_id, uuid_val in id_map.items()}
     print(f"✅ Corpus setup complete: {len(id_map)} entities created")
