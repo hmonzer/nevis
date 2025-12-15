@@ -2,7 +2,7 @@
 import pytest
 import pytest_asyncio
 from pydantic.v1 import EmailStr
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 from uuid import uuid4
 
 from src.app.core.services.document_processor import DocumentProcessor
@@ -10,6 +10,7 @@ from src.app.core.services.document_service import DocumentService
 from src.app.core.services.chunking import RecursiveChunkingStrategy
 from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.app.core.services.document_search_service import DocumentChunkSearchService
+from src.app.core.services.reranker import CrossEncoderReranker
 from src.app.infrastructure.document_search_repository import DocumentSearchRepository
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
@@ -55,12 +56,35 @@ def search_repository(clean_database):
     return DocumentSearchRepository(clean_database, DocumentChunkMapper())
 
 
+@pytest_asyncio.fixture(scope="module")
+def cross_encoder_model():
+    """Create a CrossEncoder model instance for reranking."""
+    # Using a smaller model for faster tests
+    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+
+@pytest_asyncio.fixture(scope="module")
+def reranker_service(cross_encoder_model):
+    """Create a reranker service."""
+    return CrossEncoderReranker(cross_encoder_model)
+
+
 @pytest_asyncio.fixture
 def search_service(embedding_service, search_repository):
-    """Create a document chunk search service."""
+    """Create a document chunk search service WITHOUT reranking."""
     return DocumentChunkSearchService(
         embedding_service=embedding_service,
         search_repository=search_repository
+    )
+
+
+@pytest_asyncio.fixture
+def search_service_with_reranker(embedding_service, search_repository, reranker_service):
+    """Create a document chunk search service WITH reranking."""
+    return DocumentChunkSearchService(
+        embedding_service=embedding_service,
+        search_repository=search_repository,
+        reranker_service=reranker_service
     )
 
 
@@ -267,6 +291,94 @@ async def test_end_to_end_document_search_proof_of_address(
         f"Top result should be from utility bill (best proof of address), "
         f"but got document {top_result_doc_id}"
     )
+
+
+@pytest.mark.asyncio
+async def test_reranking_produces_different_scores(
+    clean_database,
+    document_service,
+    search_service,
+    search_service_with_reranker,
+    unit_of_work_fixture,
+    localstack_container
+):
+    """
+    Test that reranking produces different (typically better) relevance scores.
+
+    This verifies that the reranker is being applied and produces cross-encoder
+    scores that differ from the initial cosine similarity scores.
+    """
+    # 1. Create a client
+    client = Client(
+        id=uuid4(),
+        first_name="Alice",
+        last_name="Johnson",
+        email=EmailStr("alice.johnson@test.com"),
+        description="Test client for reranking comparison"
+    )
+
+    async with unit_of_work_fixture:
+        unit_of_work_fixture.add(client)
+
+    # 2. Create utility bill (best proof of address)
+    utility_bill_content = """
+    WATER UTILITY BILL
+
+    Account Holder: Alice Johnson
+    Service Address: 789 Pine Street, Unit 5, Seattle, WA 98101
+    Billing Period: November 2024
+
+    This utility bill serves as official proof of residence at the service address.
+    This document can be used as proof of address for banking and government purposes.
+    Please present this bill along with photo identification when proof of residence is required.
+
+    Current Charges: $32.50
+    Due Date: December 15, 2024
+    Account Active Since: January 2020
+    """
+
+    utility_bill = await document_service.create_document(
+        client_id=client.id,
+        title="Water Bill - November 2024",
+        content=utility_bill_content
+    )
+    await document_service.process_document(utility_bill.id, utility_bill_content)
+
+    # 3. Search WITHOUT reranking
+    results_no_rerank = await search_service.search("proof of address", top_k=5)
+
+    # 4. Search WITH reranking
+    results_with_rerank = await search_service_with_reranker.search("proof of address", top_k=5)
+
+    # 5. Verify both return results
+    assert len(results_no_rerank) > 0, "Should find results without reranking"
+    assert len(results_with_rerank) > 0, "Should find results with reranking"
+
+    # 6. Verify utility bill ranks first in both cases
+    assert results_no_rerank[0].chunk.document_id == utility_bill.id, (
+        "Utility bill should rank first without reranking"
+    )
+    assert results_with_rerank[0].chunk.document_id == utility_bill.id, (
+        "Utility bill should rank first with reranking"
+    )
+
+    # 7. Verify scores are different (reranking changes the scoring)
+    # The score without reranking is cosine similarity (typically -1 to 1)
+    # The score with reranking is cross-encoder logits (unbounded)
+    cosine_score = results_no_rerank[0].score
+    reranked_score = results_with_rerank[0].score
+
+    # Scores should be different due to different scoring methods
+    assert cosine_score != reranked_score, (
+        f"Reranking should produce different scores. "
+        f"Cosine: {cosine_score:.4f}, Reranked: {reranked_score:.4f}"
+    )
+
+    print(f"\n=== Reranking Impact ===")
+    print(f"Top result cosine similarity score: {cosine_score:.4f}")
+    print(f"Top result cross-encoder score: {reranked_score:.4f}")
+    print(f"Score difference: {abs(reranked_score - cosine_score):.4f}")
+    print(f"Both methods ranked utility bill as most relevant ✓")
 
 
 @pytest.mark.asyncio

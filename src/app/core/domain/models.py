@@ -60,10 +60,14 @@ class ChunkSearchResult(BaseModel):
     """
     Domain model representing a document chunk search result with relevance score.
 
-    This model pairs a DocumentChunk with its similarity score from vector search,
-    allowing search results to be ranked by relevance.
+    This model pairs a DocumentChunk with its similarity/relevance score.
+    The score can come from different sources:
+    - Cosine similarity: typically in range [-1.0, 1.0]
+    - CrossEncoder reranking: unbounded logits (any real number)
+
+    Higher scores always indicate higher relevance, regardless of source.
     """
     chunk: DocumentChunk = Field(..., description="The document chunk that matched the search")
-    score: float = Field(..., ge=-1.0, le=1.0, description="Cosine similarity score (-1.0 to 1.0, higher is more relevant)")
+    score: float = Field(..., description="Relevance score (higher is more relevant). Range depends on scoring method.")
 
     model_config = {"from_attributes": True}

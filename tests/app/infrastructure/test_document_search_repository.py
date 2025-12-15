@@ -103,9 +103,9 @@ async def test_search_by_vector_returns_similar_chunks(search_repository, unit_o
     # Verify scores are in descending order
     assert results[0].score > results[1].score > results[2].score
 
-    # Verify scores are in valid range [-1.0, 1.0]
+    # Verify scores are in valid range for cosine similarity [-1.0, 1.0]
     for result in results:
-        assert -1.0 <= result.score <= 1.0
+        assert -1.0 <= result.score <= 1.0, "Cosine similarity scores should be in range [-1.0, 1.0]"
 
 
 @pytest.mark.asyncio
