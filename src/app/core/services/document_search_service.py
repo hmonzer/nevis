@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from uuid import UUID
 
-from src.app.core.domain.models import DocumentSearchResult
+from src.app.core.domain.models import DocumentSearchResult, SearchRequest
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.infrastructure.document_repository import DocumentRepository
 
@@ -36,9 +36,7 @@ class DocumentSearchService:
 
     async def search(
         self,
-        query: str,
-        top_k: int = 10,
-        threshold: float = 0.5
+        request: SearchRequest
     ) -> list[DocumentSearchResult]:
         """
         Search for documents semantically similar to the query.
@@ -50,37 +48,24 @@ class DocumentSearchService:
         4. Returns top K documents ranked by relevance score (descending)
 
         Args:
-            query: The search query string
-            top_k: Maximum number of documents to return (default: 10)
-            threshold: Minimum similarity score for chunks (default: 0.5)
+            request: SearchRequest containing query, top_k, and threshold parameters.
+                    Validation is handled by the SearchRequest model.
 
         Returns:
             List of DocumentSearchResult objects containing documents and their relevance scores,
             ordered by score descending (most relevant first)
-
-        Raises:
-            ValueError: If query is empty, threshold is invalid, or top_k is invalid
         """
-        # Validate inputs
-        if not query or not query.strip():
-            raise ValueError("Search query cannot be empty")
-
-        if top_k <= 0:
-            raise ValueError("top_k must be greater than 0")
-
-        if threshold < -1.0 or threshold > 1.0:
-            raise ValueError("threshold must be between -1.0 and 1.0")
-
-        logger.info("Searching for documents matching query: '%s' (top_k=%d)", query[:100], top_k)
+        logger.info("Searching for documents matching query: '%s' (top_k=%d)", request.query[:100], request.top_k)
 
         # Search for relevant chunks
         # Fetch more chunks to ensure we get enough documents
-        chunk_limit = top_k * 5
-        chunk_results = await self.chunk_search_service.search(
-            query=query,
+        chunk_limit = request.top_k * 5
+        chunk_search_request = SearchRequest(
+            query=request.query,
             top_k=chunk_limit,
-            similarity_threshold=threshold
+            threshold=request.threshold
         )
+        chunk_results = await self.chunk_search_service.search(chunk_search_request)
 
         logger.info("Retrieved %d chunks from chunk search", len(chunk_results))
 
@@ -103,7 +88,7 @@ class DocumentSearchService:
             document_scores.keys(),
             key=lambda doc_id: document_scores[doc_id],
             reverse=True
-        )[:top_k]
+        )[:request.top_k]
 
         # Retrieve full document records in batch
         documents = await self.document_repository.get_by_ids(sorted_doc_ids)

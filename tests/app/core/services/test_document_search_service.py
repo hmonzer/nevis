@@ -1,18 +1,18 @@
 """Tests for DocumentSearchService."""
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, Mock
 
 from src.app.core.domain.models import (
     Document,
     DocumentChunk,
     ChunkSearchResult,
-    DocumentSearchResult
+    SearchRequest
 )
-from src.app.core.services.document_search_service import DocumentSearchService
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
+from src.app.core.services.document_search_service import DocumentSearchService
 from src.app.infrastructure.document_repository import DocumentRepository
 
 
@@ -98,7 +98,8 @@ async def test_search_multiple_documents(document_search_service, mock_chunk_sea
     mock_document_repository.get_by_ids.return_value = [doc1, doc2, doc3]
 
     # Act
-    results = await document_search_service.search("portfolio performance", top_k=10)
+    request = SearchRequest(query="portfolio performance", top_k=10)
+    results = await document_search_service.search(request)
 
     # Assert
     assert len(results) == 3
@@ -109,12 +110,12 @@ async def test_search_multiple_documents(document_search_service, mock_chunk_sea
     assert results[2].document.id == doc3_id
     assert results[2].score == 0.72
 
-    # Verify chunk search was called with correct parameters
-    mock_chunk_search_service.search.assert_called_once_with(
-        query="portfolio performance",
-        top_k=50,  # top_k * 5
-        similarity_threshold=0.5
-    )
+    # Verify chunk search was called with a SearchRequest
+    mock_chunk_search_service.search.assert_called_once()
+    call_args = mock_chunk_search_service.search.call_args[0][0]
+    assert isinstance(call_args, SearchRequest)
+    assert call_args.query == "portfolio performance"
+    assert call_args.top_k == 50  # top_k * 5
 
     # Verify batch fetch was used
     mock_document_repository.get_by_ids.assert_called_once()
@@ -166,7 +167,8 @@ async def test_search_multiple_chunks_same_document(document_search_service, moc
     mock_document_repository.get_by_ids.return_value = [document]
 
     # Act
-    results = await document_search_service.search("wealth management strategies", top_k=5)
+    request = SearchRequest(query="wealth management strategies", top_k=5)
+    results = await document_search_service.search(request)
 
     # Assert - Should return only one document with the highest score
     assert len(results) == 1
@@ -208,7 +210,8 @@ async def test_search_respects_top_k_limit(document_search_service, mock_chunk_s
     mock_document_repository.get_by_ids.return_value = top_3_docs
 
     # Act - Request only top 3
-    results = await document_search_service.search("financial report", top_k=3)
+    request = SearchRequest(query="financial report", top_k=3)
+    results = await document_search_service.search(request)
 
     # Assert - Should return exactly 3 documents
     assert len(results) == 3
@@ -286,7 +289,8 @@ async def test_search_mixed_documents_and_chunks(document_search_service, mock_c
     mock_document_repository.get_by_ids.return_value = [doc1, doc2, doc3]
 
     # Act
-    results = await document_search_service.search("investment portfolio", top_k=10)
+    request = SearchRequest(query="investment portfolio", top_k=10)
+    results = await document_search_service.search(request)
 
     # Assert - Should return 3 documents, ordered by highest chunk score
     assert len(results) == 3
@@ -305,40 +309,11 @@ async def test_search_no_results(document_search_service, mock_chunk_search_serv
     mock_chunk_search_service.search.return_value = []
 
     # Act
-    results = await document_search_service.search("quantum physics research", top_k=10)
+    request = SearchRequest(query="quantum physics research", top_k=10)
+    results = await document_search_service.search(request)
 
     # Assert
     assert len(results) == 0
-
-
-@pytest.mark.asyncio
-async def test_search_empty_query_raises_error(document_search_service):
-    """Test that empty query raises ValueError."""
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await document_search_service.search("", top_k=10)
-
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await document_search_service.search("   ", top_k=10)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_top_k_raises_error(document_search_service):
-    """Test that invalid top_k raises ValueError."""
-    with pytest.raises(ValueError, match="top_k must be greater than 0"):
-        await document_search_service.search("test query", top_k=0)
-
-    with pytest.raises(ValueError, match="top_k must be greater than 0"):
-        await document_search_service.search("test query", top_k=-5)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_threshold_raises_error(document_search_service):
-    """Test that invalid threshold raises ValueError."""
-    with pytest.raises(ValueError, match="threshold must be between -1.0 and 1.0"):
-        await document_search_service.search("test query", threshold=-1.5)
-
-    with pytest.raises(ValueError, match="threshold must be between -1.0 and 1.0"):
-        await document_search_service.search("test query", threshold=1.5)
 
 
 @pytest.mark.asyncio
@@ -365,16 +340,18 @@ async def test_search_with_custom_threshold(document_search_service, mock_chunk_
     mock_document_repository.get_by_ids.return_value = [document]
 
     # Act
-    results = await document_search_service.search("compliance requirements", top_k=5, threshold=0.7)
+    request = SearchRequest(query="compliance requirements", top_k=5, threshold=0.7)
+    results = await document_search_service.search(request)
 
     # Assert
     assert len(results) == 1
-    # Verify custom threshold was passed to chunk search
-    mock_chunk_search_service.search.assert_called_once_with(
-        query="compliance requirements",
-        top_k=25,  # top_k * 5
-        similarity_threshold=0.7
-    )
+    # Verify custom threshold was passed to chunk search via SearchRequest
+    mock_chunk_search_service.search.assert_called_once()
+    call_args = mock_chunk_search_service.search.call_args[0][0]
+    assert isinstance(call_args, SearchRequest)
+    assert call_args.query == "compliance requirements"
+    assert call_args.top_k == 25  # top_k * 5
+    assert call_args.threshold == 0.7
 
 
 @pytest.mark.asyncio
@@ -395,7 +372,8 @@ async def test_search_document_not_found_in_repository(document_search_service, 
     mock_document_repository.get_by_ids.return_value = []  # Document not found
 
     # Act
-    results = await document_search_service.search("test query", top_k=10)
+    request = SearchRequest(query="test query", top_k=10)
+    results = await document_search_service.search(request)
 
     # Assert - Should handle gracefully and return empty results
     assert len(results) == 0
@@ -457,7 +435,8 @@ async def test_search_wealth_management_scenario(document_search_service, mock_c
     mock_document_repository.get_by_ids.return_value = [estate_doc, tax_doc, investment_doc]
 
     # Act
-    results = await document_search_service.search("estate planning strategies", top_k=5)
+    request = SearchRequest(query="estate planning strategies", top_k=5)
+    results = await document_search_service.search(request)
 
     # Assert
     assert len(results) == 3

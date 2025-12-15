@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from pydantic.v1 import EmailStr
 
-from src.app.core.domain.models import Client
+from src.app.core.domain.models import Client, SearchRequest
 from src.app.core.services.client_search_service import ClientSearchService
 from src.app.infrastructure.client_search_repository import ClientSearchRepository
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
@@ -101,7 +101,8 @@ async def wealth_management_clients(unit_of_work):
 async def test_search_investment_banker(client_search_service, wealth_management_clients):
     """Test searching for investment banking professionals."""
     # Act
-    results = await client_search_service.search("investment banker", top_k=5)
+    request = SearchRequest(query="investment banker", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Jonathan Sterling should rank highest
     assert len(results) > 0
@@ -121,7 +122,8 @@ async def test_search_investment_banker(client_search_service, wealth_management
 async def test_search_wealth_management(client_search_service, wealth_management_clients):
     """Test searching for wealth management professionals."""
     # Act
-    results = await client_search_service.search("wealth management", top_k=5)
+    request = SearchRequest(query="wealth management", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Elizabeth Chen should rank highest
     assert len(results) > 0
@@ -135,7 +137,8 @@ async def test_search_wealth_management(client_search_service, wealth_management
 async def test_search_real_estate(client_search_service, wealth_management_clients):
     """Test searching for real estate professionals."""
     # Act
-    results = await client_search_service.search("real estate", top_k=5)
+    request = SearchRequest(query="real estate", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Robert Patterson should rank highest
     assert len(results) > 0
@@ -149,7 +152,8 @@ async def test_search_real_estate(client_search_service, wealth_management_clien
 async def test_search_technology_sector(client_search_service, wealth_management_clients):
     """Test searching for technology sector professionals."""
     # Act
-    results = await client_search_service.search("technology", top_k=5)
+    request = SearchRequest(query="technology", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Michael Torres (tech executive) should rank highest
     assert len(results) > 0
@@ -166,7 +170,8 @@ async def test_search_technology_sector(client_search_service, wealth_management
 async def test_search_portfolio_manager(client_search_service, wealth_management_clients):
     """Test searching for portfolio management professionals."""
     # Act
-    results = await client_search_service.search("portfolio manager", top_k=5)
+    request = SearchRequest(query="portfolio manager", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Sarah Goldman should rank highest
     assert len(results) > 0
@@ -180,7 +185,8 @@ async def test_search_portfolio_manager(client_search_service, wealth_management
 async def test_search_by_company_domain(client_search_service, wealth_management_clients):
     """Test searching by company email domain."""
     # Act - Search for Morgan Stanley
-    results = await client_search_service.search("morganstanley", top_k=5)
+    request = SearchRequest(query="morganstanley", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Elizabeth Chen should be found (morganstanley.com email)
     assert len(results) > 0
@@ -193,7 +199,8 @@ async def test_search_by_company_domain(client_search_service, wealth_management
 async def test_search_by_first_name(client_search_service, wealth_management_clients):
     """Test searching by first name."""
     # Act - Search for "Sarah"
-    results = await client_search_service.search("Sarah", top_k=5)
+    request = SearchRequest(query="Sarah", top_k=5)
+    results = await client_search_service.search(request)
 
     # Assert - Sarah Goldman should be found
     assert len(results) > 0
@@ -206,10 +213,12 @@ async def test_search_by_first_name(client_search_service, wealth_management_cli
 async def test_search_with_high_threshold(client_search_service, wealth_management_clients):
     """Test that high threshold returns only close matches."""
     # Act - Search with high threshold (strict matching)
-    results_strict = await client_search_service.search("investment banker", top_k=10, threshold=0.4)
+    request_strict = SearchRequest(query="investment banker", top_k=10, threshold=0.4)
+    results_strict = await client_search_service.search(request_strict)
 
     # Search with low threshold (loose matching)
-    results_loose = await client_search_service.search("investment banker", top_k=10, threshold=0.1)
+    request_loose = SearchRequest(query="investment banker", top_k=10, threshold=0.1)
+    results_loose = await client_search_service.search(request_loose)
 
     # Assert - Loose threshold should return more or equal results
     assert len(results_loose) >= len(results_strict)
@@ -227,8 +236,11 @@ async def test_search_with_high_threshold(client_search_service, wealth_manageme
 async def test_search_with_top_k_limit(client_search_service, wealth_management_clients):
     """Test that top_k parameter limits the number of results."""
     # Act - Search with different top_k values
-    results_top_3 = await client_search_service.search("manager", top_k=3)
-    results_top_10 = await client_search_service.search("manager", top_k=10)
+    request_top_3 = SearchRequest(query="manager", top_k=3)
+    results_top_3 = await client_search_service.search(request_top_3)
+
+    request_top_10 = SearchRequest(query="manager", top_k=10)
+    results_top_10 = await client_search_service.search(request_top_10)
 
     # Assert - Should respect top_k limit
     assert len(results_top_3) <= 3
@@ -243,47 +255,19 @@ async def test_search_with_top_k_limit(client_search_service, wealth_management_
 async def test_search_no_matches(client_search_service, wealth_management_clients):
     """Test searching with a query that has no matches."""
     # Act - Search for something completely unrelated
-    results = await client_search_service.search("quantum physics researcher", top_k=5)
+    request = SearchRequest(query="quantum physics researcher", top_k=5)
+    results = await client_search_service.search(request)
 
     # Assert - Should return empty list or very low scores
     assert len(results) == 0 or all(result.score < 0.2 for result in results)
 
 
 @pytest.mark.asyncio
-async def test_search_empty_query_raises_error(client_search_service, wealth_management_clients):
-    """Test that empty query raises ValueError."""
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await client_search_service.search("", top_k=5)
-
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await client_search_service.search("   ", top_k=5)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_threshold_raises_error(client_search_service, wealth_management_clients):
-    """Test that invalid threshold raises ValueError."""
-    with pytest.raises(ValueError, match="Threshold must be between 0.0 and 1.0"):
-        await client_search_service.search("test", threshold=-0.1)
-
-    with pytest.raises(ValueError, match="Threshold must be between 0.0 and 1.0"):
-        await client_search_service.search("test", threshold=1.5)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_top_k_raises_error(client_search_service, wealth_management_clients):
-    """Test that invalid top_k raises ValueError."""
-    with pytest.raises(ValueError, match="top_k must be greater than 0"):
-        await client_search_service.search("test", top_k=0)
-
-    with pytest.raises(ValueError, match="top_k must be greater than 0"):
-        await client_search_service.search("test", top_k=-1)
-
-
-@pytest.mark.asyncio
 async def test_search_multi_keyword_query(client_search_service, wealth_management_clients):
     """Test searching with multiple keywords."""
     # Act - Search for "hedge fund portfolio"
-    results = await client_search_service.search("hedge fund portfolio", top_k=5)
+    request = SearchRequest(query="hedge fund portfolio", top_k=5, threshold=0.1)
+    results = await client_search_service.search(request)
 
     # Assert - Sarah Goldman (hedge fund portfolio manager) should rank highest
     assert len(results) > 0

@@ -2,7 +2,7 @@
 import logging
 from typing import Optional
 
-from src.app.core.domain.models import ChunkSearchResult
+from src.app.core.domain.models import ChunkSearchResult, SearchRequest
 from src.app.core.services.embedding import EmbeddingService
 from src.app.core.services.reranker import RerankerService
 from src.app.infrastructure.document_search_repository import DocumentSearchRepository
@@ -40,9 +40,7 @@ class DocumentChunkSearchService:
 
     async def search(
         self,
-        query: str,
-        top_k: int = 10,
-        similarity_threshold: float = 0.5
+        request: SearchRequest
     ) -> list[ChunkSearchResult]:
         """
         Search for document chunks semantically similar to the query.
@@ -54,42 +52,28 @@ class DocumentChunkSearchService:
         4. Returns top K results ranked by relevance score (descending)
 
         Args:
-            query: The search query string
-            top_k: Maximum number of results to return (default: 10)
-            similarity_threshold: Optional minimum similarity score (-1.0 to 1.0).
-                                Applied during initial retrieval phase.
+            request: SearchRequest containing query, top_k, and threshold parameters.
+                    Validation is handled by the SearchRequest model.
 
         Returns:
             List of ChunkSearchResult objects containing chunks and their relevance scores,
             ordered by score descending (most relevant first).
             Scores are cosine similarity if no reranker, or cross-encoder logits if reranked.
-
-        Raises:
-            ValueError: If query is empty or invalid, or if top_k < 1
         """
-        if not query or not query.strip():
-            raise ValueError("Search query cannot be empty")
-
-        if top_k < 1:
-            raise ValueError("top_k must be at least 1")
-
-        if similarity_threshold is not None and (similarity_threshold < -1.0 or similarity_threshold > 1.0):
-            raise ValueError("similarity_threshold must be between -1.0 and 1.0")
-
-        logger.info("Searching for chunks similar to query: '%s' (top_k=%d)", query[:100], top_k)
+        logger.info("Searching for chunks similar to query: '%s' (top_k=%d)", request.query[:100], request.top_k)
 
         # Convert query to embedding vector
-        embedding_result = await self.embedding_service.embed_query(query)
+        embedding_result = await self.embedding_service.embed_query(request.query)
         logger.debug("Generated query embedding with %d dimensions", len(embedding_result.embedding))
 
         # Search for similar chunks (retrieval phase)
         # Fetch more candidates if we're going to rerank
-        retrieval_limit = top_k * 3 if self.reranker_service else top_k
+        retrieval_limit = request.top_k * 3 if self.reranker_service else request.top_k
 
         results = await self.search_repository.search_by_vector(
             query_vector=embedding_result.embedding,
             limit=retrieval_limit,
-            similarity_threshold=similarity_threshold
+            similarity_threshold=request.threshold
         )
 
         logger.info("Retrieved %d candidate chunks from vector search", len(results))
@@ -97,11 +81,11 @@ class DocumentChunkSearchService:
         # Apply reranking if reranker is available
         if self.reranker_service and results:
             logger.info("Applying reranking to %d candidates", len(results))
-            results = await self.reranker_service.rerank(query, results, top_k=top_k)
+            results = await self.reranker_service.rerank(request.query, results, top_k=request.top_k)
             logger.info("Reranking complete. Returning top %d results", len(results))
         else:
             # No reranker - just return top_k from vector search
-            results = results[:top_k]
+            results = results[:request.top_k]
 
         logger.info("Search complete. Returning %d results", len(results))
 

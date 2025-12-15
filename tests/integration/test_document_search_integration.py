@@ -20,7 +20,7 @@ from src.app.infrastructure.mappers.document_mapper import DocumentMapper
 from src.shared.database.entity_mapper import EntityMapper
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
-from src.app.core.domain.models import Client, Document, DocumentChunk
+from src.app.core.domain.models import Client, Document, DocumentChunk, SearchRequest
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -269,7 +269,8 @@ async def test_end_to_end_document_search_proof_of_address(
     await document_service.process_document(license.id, license_content)
 
     # 5. Search for "proof of address"
-    results = await search_service.search("proof of address", top_k=5)
+    request = SearchRequest(query="proof of address", top_k=5)
+    results = await search_service.search(request)
 
     # 6. Verify results
     assert len(results) > 0, "Should find at least one relevant chunk"
@@ -345,10 +346,11 @@ async def test_reranking_produces_different_scores(
     await document_service.process_document(utility_bill.id, utility_bill_content)
 
     # 3. Search WITHOUT reranking
-    results_no_rerank = await search_service.search("proof of address", top_k=5)
+    request = SearchRequest(query="proof of address", top_k=5)
+    results_no_rerank = await search_service.search(request)
 
     # 4. Search WITH reranking
-    results_with_rerank = await search_service_with_reranker.search("proof of address", top_k=5)
+    results_with_rerank = await search_service_with_reranker.search(request)
 
     # 5. Verify both return results
     assert len(results_no_rerank) > 0, "Should find results without reranking"
@@ -431,18 +433,12 @@ async def test_search_with_similarity_threshold(
     await document_service.process_document(document.id, document_content)
 
     # 3. Search with high similarity threshold (0.7)
-    results_high_threshold = await search_service.search(
-        "proof of address",
-        top_k=10,
-        similarity_threshold=0.7  # High threshold
-    )
+    request_high = SearchRequest(query="proof of address", top_k=10, threshold=0.7)
+    results_high_threshold = await search_service.search(request_high)
 
     # 4. Search with low similarity threshold (0.3)
-    results_low_threshold = await search_service.search(
-        "proof of address",
-        top_k=10,
-        similarity_threshold=0.3  # Low threshold
-    )
+    request_low = SearchRequest(query="proof of address", top_k=10, threshold=0.3)
+    results_low_threshold = await search_service.search(request_low)
 
     # Assert - High threshold should return fewer or equal results
     assert len(results_high_threshold) <= len(results_low_threshold), (
@@ -453,33 +449,3 @@ async def test_search_with_similarity_threshold(
     # All high threshold results should have score >= 0.7
     for result in results_high_threshold:
         assert result.score >= 0.7, f"Result with score {result.score} should be >= 0.7"
-
-
-@pytest.mark.asyncio
-async def test_search_empty_query_raises_error(search_service):
-    """Test that searching with an empty query raises ValueError."""
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await search_service.search("", top_k=10)
-
-    with pytest.raises(ValueError, match="Search query cannot be empty"):
-        await search_service.search("   ", top_k=10)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_top_k_raises_error(search_service):
-    """Test that searching with invalid top_k raises ValueError."""
-    with pytest.raises(ValueError, match="top_k must be at least 1"):
-        await search_service.search("test query", top_k=0)
-
-    with pytest.raises(ValueError, match="top_k must be at least 1"):
-        await search_service.search("test query", top_k=-1)
-
-
-@pytest.mark.asyncio
-async def test_search_invalid_threshold_raises_error(search_service):
-    """Test that searching with invalid threshold raises ValueError."""
-    with pytest.raises(ValueError, match="similarity_threshold must be between -1.0 and 1.0"):
-        await search_service.search("test query", top_k=10, similarity_threshold=1.5)
-
-    with pytest.raises(ValueError, match="similarity_threshold must be between -1.0 and 1.0"):
-        await search_service.search("test query", top_k=10, similarity_threshold=-1.5)
