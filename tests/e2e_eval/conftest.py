@@ -9,7 +9,8 @@ from src.app.core.services.client_search_service import ClientSearchService
 from src.app.core.services.search_service import SearchService
 from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.app.core.services.reranker import CrossEncoderReranker
-from src.app.infrastructure.document_search_repository import DocumentSearchRepository
+from src.app.core.services.rrf import ReciprocalRankFusion
+from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
 from src.app.infrastructure.client_search_repository import ClientSearchRepository
 from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
@@ -41,10 +42,16 @@ def reranker_service(cross_encoder_model):
     return CrossEncoderReranker(cross_encoder_model)
 
 
+@pytest_asyncio.fixture(scope="module")
+def rrf():
+    """Create Reciprocal Rank Fusion instance."""
+    return ReciprocalRankFusion(k=60)
+
+
 @pytest_asyncio.fixture
 def document_search_repository(clean_database):
     """Create document search repository."""
-    return DocumentSearchRepository(clean_database, DocumentChunkMapper())
+    return ChunksRepositorySearch(clean_database, DocumentChunkMapper())
 
 
 @pytest_asyncio.fixture
@@ -54,11 +61,12 @@ def client_search_repository(clean_database):
 
 
 @pytest_asyncio.fixture
-def chunk_search_service(embedding_service, document_search_repository, reranker_service):
+def chunk_search_service(embedding_service, document_search_repository, rrf, reranker_service):
     """Create document chunk search service."""
     return DocumentChunkSearchService(
         embedding_service=embedding_service,
         search_repository=document_search_repository,
+        rrf=rrf,
         reranker_service=reranker_service,
     )
 

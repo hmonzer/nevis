@@ -1,5 +1,6 @@
 """API schemas for client and document requests and responses."""
 from datetime import datetime
+from typing import Union
 from uuid import UUID
 from enum import Enum
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -70,5 +71,27 @@ class DocumentResponse(BaseModel):
     s3_key: str
     status: DocumentStatusEnum
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SearchResultTypeEnum(str, Enum):
+    """Type of entity in a search result."""
+    CLIENT = "CLIENT"
+    DOCUMENT = "DOCUMENT"
+
+
+class SearchResultResponse(BaseModel):
+    """
+    Response schema for a unified search result.
+
+    Can contain either a Client or Document entity with its relevance score and rank.
+    """
+    type: SearchResultTypeEnum = Field(..., description="Type of entity in the result")
+    entity: Union[ClientResponse, DocumentResponse] = Field(
+        ..., description="The matched entity (Client or Document)"
+    )
+    score: float = Field(..., description="Relevance score (higher is more relevant)")
+    rank: int = Field(..., ge=1, description="Rank position in the result set (1-based)")
 
     model_config = {"from_attributes": True}

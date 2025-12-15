@@ -3,7 +3,7 @@ from enum import Enum as PyEnum
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, Text, Index
+from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.shared.database.database import Base
@@ -79,4 +79,13 @@ Index(
     postgresql_using='hnsw',
     postgresql_with={'m': 16, 'ef_construction': 64},
     postgresql_ops={'embedding': 'vector_cosine_ops'}
+)
+
+# GIN index for full-text search on chunk_content
+# Uses PostgreSQL's to_tsvector function for efficient keyword search
+# Note: text("'english'") is used because SQLAlchemy doesn't have a built-in REGCONFIG type
+Index(
+    'ix_document_chunks_content_gin',
+    func.to_tsvector(text("'english'"), DocumentChunkEntity.chunk_content),
+    postgresql_using='gin'
 )

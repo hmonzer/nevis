@@ -1,6 +1,12 @@
 """Mappers for converting between domain models and API schemas."""
-from src.app.core.domain.models import Client, Document
-from src.client.schemas import ClientResponse, DocumentResponse, DocumentStatusEnum
+from src.app.core.domain.models import Client, Document, SearchResult
+from src.client.schemas import (
+    ClientResponse,
+    DocumentResponse,
+    DocumentStatusEnum,
+    SearchResultResponse,
+    SearchResultTypeEnum,
+)
 
 
 def to_client_response(client: Client) -> ClientResponse:
@@ -40,4 +46,28 @@ def to_document_response(document: Document) -> DocumentResponse:
         s3_key=document.s3_key,
         status=DocumentStatusEnum(document.status.value),
         created_at=document.created_at,
+    )
+
+
+def to_search_result_response(result: SearchResult) -> SearchResultResponse:
+    """
+    Convert a SearchResult domain model to SearchResultResponse API schema.
+
+    Args:
+        result: Domain model containing either a Client or Document
+
+    Returns:
+        API response schema with the appropriate entity type
+    """
+    # Convert the entity based on type
+    if result.type == "CLIENT":
+        entity_response = to_client_response(result.entity)  # type: ignore
+    else:
+        entity_response = to_document_response(result.entity)  # type: ignore
+
+    return SearchResultResponse(
+        type=SearchResultTypeEnum(result.type),
+        entity=entity_response,
+        score=result.score,
+        rank=result.rank,
     )

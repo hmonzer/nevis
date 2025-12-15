@@ -13,6 +13,7 @@ from src.app.core.services.chunking import RecursiveChunkingStrategy
 from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.app.core.services.reranker import CrossEncoderReranker
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
+from src.app.core.services.rrf import ReciprocalRankFusion
 from src.app.core.services.document_search_service import DocumentSearchService
 from src.app.core.services.client_search_service import ClientSearchService
 from src.app.core.services.search_service import SearchService
@@ -24,7 +25,7 @@ from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettin
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
 from src.app.infrastructure.document_chunk_repository import DocumentChunkRepository
-from src.app.infrastructure.document_search_repository import DocumentSearchRepository
+from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
 from src.app.infrastructure.client_search_repository import ClientSearchRepository
 from src.app.infrastructure.mappers.client_mapper import ClientMapper
 from src.app.infrastructure.mappers.document_mapper import DocumentMapper
@@ -280,9 +281,9 @@ def get_reranker_service(
 def get_document_search_repository(
     db: Database = Depends(get_database),
     mapper: DocumentChunkMapper = Depends(get_document_chunk_mapper)
-) -> DocumentSearchRepository:
+) -> ChunksRepositorySearch:
     """Get document search repository instance."""
-    return DocumentSearchRepository(db, mapper)
+    return ChunksRepositorySearch(db, mapper)
 
 
 def get_client_search_repository(
@@ -293,15 +294,22 @@ def get_client_search_repository(
     return ClientSearchRepository(db, mapper)
 
 
+def get_rrf() -> ReciprocalRankFusion:
+    """Get Reciprocal Rank Fusion instance for hybrid search."""
+    return ReciprocalRankFusion(k=60)
+
+
 def get_document_chunk_search_service(
     embedding_service: SentenceTransformerEmbedding = Depends(get_embedding_service),
-    search_repository: DocumentSearchRepository = Depends(get_document_search_repository),
+    search_repository: ChunksRepositorySearch = Depends(get_document_search_repository),
+    rrf: ReciprocalRankFusion = Depends(get_rrf),
     reranker_service: CrossEncoderReranker = Depends(get_reranker_service)
 ) -> DocumentChunkSearchService:
     """Get document chunk search service instance."""
     return DocumentChunkSearchService(
         embedding_service=embedding_service,
         search_repository=search_repository,
+        rrf=rrf,
         reranker_service=reranker_service,
     )
 

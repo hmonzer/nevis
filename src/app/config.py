@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Search Settings
     search_default_top_k: int = 3
-    search_default_threshold: float = 0.1
+    search_default_threshold: float = 0.3
     search_max_top_k: int = 100
     client_search_default_threshold: float = 0.1
 

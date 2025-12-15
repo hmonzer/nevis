@@ -11,7 +11,8 @@ from src.app.core.services.chunking import RecursiveChunkingStrategy
 from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.core.services.reranker import CrossEncoderReranker
-from src.app.infrastructure.document_search_repository import DocumentSearchRepository
+from src.app.core.services.rrf import ReciprocalRankFusion
+from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
 from src.app.infrastructure.client_repository import ClientRepository
 from src.app.infrastructure.document_repository import DocumentRepository
 from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
@@ -53,7 +54,7 @@ def document_processor(chunking_service, embedding_service):
 @pytest_asyncio.fixture
 def search_repository(clean_database):
     """Create a document search repository."""
-    return DocumentSearchRepository(clean_database, DocumentChunkMapper())
+    return ChunksRepositorySearch(clean_database, DocumentChunkMapper())
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -69,21 +70,29 @@ def reranker_service(cross_encoder_model):
     return CrossEncoderReranker(cross_encoder_model)
 
 
+@pytest_asyncio.fixture(scope="module")
+def rrf():
+    """Create a Reciprocal Rank Fusion instance."""
+    return ReciprocalRankFusion(k=60)
+
+
 @pytest_asyncio.fixture
-def search_service(embedding_service, search_repository):
+def search_service(embedding_service, search_repository, rrf):
     """Create a document chunk search service WITHOUT reranking."""
     return DocumentChunkSearchService(
         embedding_service=embedding_service,
-        search_repository=search_repository
+        search_repository=search_repository,
+        rrf=rrf
     )
 
 
 @pytest_asyncio.fixture
-def search_service_with_reranker(embedding_service, search_repository, reranker_service):
+def search_service_with_reranker(embedding_service, search_repository, rrf, reranker_service):
     """Create a document chunk search service WITH reranking."""
     return DocumentChunkSearchService(
         embedding_service=embedding_service,
         search_repository=search_repository,
+        rrf=rrf,
         reranker_service=reranker_service
     )
 
