@@ -40,8 +40,7 @@ async def test_get_client_by_id(client_repository, unit_of_work):
         first_name="John",
         last_name="Doe",
         email=EmailStr("john.doe@example.com"),
-        description="Test client",
-        created_at=datetime.now(UTC)
+        description="Test client"
     )
 
     # Persist the client
@@ -76,12 +75,10 @@ async def test_get_client_by_email(client_repository, unit_of_work):
     """Test retrieving a client by email."""
     # Arrange - Create a client
     client = Client(
-        id=uuid4(),
         first_name="Jane",
         last_name="Smith",
         email=EmailStr("jane.smith@example.com"),
-        description="Test client",
-        created_at=datetime.now(UTC)
+        description="Test client"
     )
 
     # Persist the client

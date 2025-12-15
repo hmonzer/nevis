@@ -1,3 +1,4 @@
+.idea
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +206,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ML Models
+# Downloaded embedding models (use scripts/download_embedding_model.py to download)
+models/
