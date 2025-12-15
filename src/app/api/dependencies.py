@@ -32,6 +32,11 @@ from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMa
 from src.app.config import get_settings
 
 
+# Global singleton instances for ML models (loaded once, reused across all requests)
+_sentence_transformer_model: SentenceTransformer | None = None
+_cross_encoder_model: CrossEncoder | None = None
+
+
 async def get_database() -> AsyncGenerator[Database, None]:
     """Get database instance."""
     settings = get_settings()
@@ -137,10 +142,22 @@ def get_chunking_service() -> RecursiveChunkingStrategy:
 
 def get_sentence_transformer_model() -> SentenceTransformer:
     """
-    Get SentenceTransformer model instance.
+    Get SentenceTransformer model instance (singleton).
+
+    This model is loaded once as a global variable and reused across all requests to:
+    1. Prevent concurrent model initialization (not thread-safe)
+    2. Save memory (~400MB per model instance)
+    3. Improve performance (model loading takes 2-5 seconds)
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
+    global _sentence_transformer_model
+
+    # Return cached model if already loaded
+    if _sentence_transformer_model is not None:
+        return _sentence_transformer_model
+
+    # Load model for the first time
     settings = get_settings()
     model_name = settings.embedding_model_name
 
@@ -150,18 +167,42 @@ def get_sentence_transformer_model() -> SentenceTransformer:
     model_path = models_dir / model_name
 
     # If local model exists, use it; otherwise download from HuggingFace
+    # Explicitly set device='cpu' and local_files_only=False to avoid meta tensor issues
     if model_path.exists() and os.path.isdir(model_path):
-        return SentenceTransformer(str(model_path))
+        _sentence_transformer_model = SentenceTransformer(
+            str(model_path),
+            device='cpu',
+            local_files_only=False
+        )
     else:
-        return SentenceTransformer(model_name)
+        _sentence_transformer_model = SentenceTransformer(
+            model_name,
+            device='cpu',
+            local_files_only=False,
+            trust_remote_code=True
+        )
+
+    return _sentence_transformer_model
 
 
 def get_cross_encoder_model() -> CrossEncoder:
     """
-    Get CrossEncoder model instance for reranking.
+    Get CrossEncoder model instance for reranking (singleton).
+
+    This model is loaded once as a global variable and reused across all requests to:
+    1. Prevent concurrent model initialization (not thread-safe)
+    2. Save memory (~400MB per model instance)
+    3. Improve performance (model loading takes 2-5 seconds)
 
     Checks for local model first, otherwise downloads from HuggingFace.
     """
+    global _cross_encoder_model
+
+    # Return cached model if already loaded
+    if _cross_encoder_model is not None:
+        return _cross_encoder_model
+
+    # Load model for the first time
     settings = get_settings()
     model_name = settings.reranker_model_name
 
@@ -172,9 +213,11 @@ def get_cross_encoder_model() -> CrossEncoder:
 
     # If local model exists, use it; otherwise download from HuggingFace
     if model_path.exists() and os.path.isdir(model_path):
-        return CrossEncoder(str(model_path))
+        _cross_encoder_model = CrossEncoder(str(model_path))
     else:
-        return CrossEncoder(model_name)
+        _cross_encoder_model = CrossEncoder(model_name)
+
+    return _cross_encoder_model
 
 
 def get_embedding_service(

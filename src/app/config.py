@@ -17,18 +17,18 @@ class Settings(BaseSettings):
     aws_secret_access_key: str | None = None
 
     # ML Model Settings
-    embedding_model_name: str = "all-MiniLM-L6-v2"
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # For production: BAAI/bge-reranker-v2-m3
 
     # Search Settings
-    search_default_top_k: int = 10
-    search_default_threshold: float = 0.5
+    search_default_top_k: int = 3
+    search_default_threshold: float = 0.1
     search_max_top_k: int = 100
     client_search_default_threshold: float = 0.1
 
     # Chunking Settings
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    chunk_size: int = 300
+    chunk_overlap: int = 50
 
     model_config = SettingsConfigDict(
         env_file=".env",

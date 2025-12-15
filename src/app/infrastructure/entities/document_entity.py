@@ -3,7 +3,7 @@ from enum import Enum as PyEnum
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, Text
+from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.shared.database.database import Base
@@ -68,3 +68,15 @@ class DocumentChunkEntity(Base):
         "DocumentEntity",
         back_populates="chunks"
     )
+
+
+# HNSW index for fast approximate nearest neighbor search on embeddings
+# This dramatically improves vector similarity search performance (O(log n) vs O(n))
+# Using cosine distance operator (<=>) which matches DocumentSearchRepository queries
+Index(
+    'ix_document_chunks_embedding_hnsw',
+    DocumentChunkEntity.embedding,
+    postgresql_using='hnsw',
+    postgresql_with={'m': 16, 'ef_construction': 64},
+    postgresql_ops={'embedding': 'vector_cosine_ops'}
+)

@@ -1,7 +1,7 @@
 {
   "suite_name": "WealthManager_Unified_Search_Eval_v3",
-  "version": "3.0",
-  "description": "Evaluation suite for unified search across clients and documents in a wealth management context",
+  "version": "3.1",
+  "description": "Evaluation suite for unified search across clients and documents in a wealth management context. Refined for realism.",
   "corpus": {
     "clients": [
       {
@@ -52,79 +52,79 @@
         "id": "doc_jones_passport",
         "client_id": "client_sarah_jones",
         "title": "Jones Family Trust - KYC Passport Scan",
-        "content": "PASSPORT DETAILS\nName: Sarah Jones\nNationality: USA\nPassport No: A12345678\nExpiry: 15 May 2028\nDOB: 1960-05-15\nIssuing Authority: USDOS"
+        "content": "UNITED STATES OF AMERICA - PASSPORT / PASSEPORT\n\nType/Type: P\nCode/Code: USA\nPassport No/No du Passeport: A12345678\n\nSurname/Nom: JONES\nGiven Names/Prenoms: SARAH ELIZABETH\nNationality/Nationalite: UNITED STATES OF AMERICA\n\nDate of Birth/Date de naissance: 15 MAY/MAI 1960\nSex/Sexe: F\nPlace of Birth/Lieu de naissance: CALIFORNIA, USA\n\nDate of Issue/Date de delivrance: 16 MAY/MAI 2018\nDate of Expiration/Date d'expiration: 15 MAY/MAI 2028\nAuthority/Autorite: UNITED STATES DEPARTMENT OF STATE\n\n<<T<USAJONES<<SARAH<ELIZABETH<<<<<<<<<<<<<<<A12345678<9USA6005154F2805159<<<<<<<<<<<<<<<4"
       },
       {
         "id": "doc_jones_rpq",
         "client_id": "client_sarah_jones",
         "title": "Risk Profile Questionnaire 2024",
-        "content": "Client indicates high tolerance for volatility. Investment horizon: 20+ years. Primary goal: Capital appreciation over preservation. Experience: Sophisticated investor."
+        "content": "CLIENT NAME: Sarah Jones\nACCOUNT NUMBER: 8899-1122\nDATE: January 15, 2024\n\nSECTION 1: INVESTMENT OBJECTIVES\nQ: What is your primary goal?\nA: Capital Appreciation. I have sufficient liquidity for living expenses.\n\nSECTION 2: TIME HORIZON\nQ: When do you expect to need these funds?\nA: 20+ years. This is legacy money for the grandchildren.\n\nSECTION 3: RISK TOLERANCE\nQ: If the market drops 20% in a month, what would you do?\nA: Buy more. I view volatility as opportunity.\n\nADVISOR NOTES:\nClient is a sophisticated investor (retired tech exec). High tolerance for volatility confirmed. Suitable for Aggressive Growth portfolio."
       },
       {
         "id": "doc_doe_passport",
         "client_id": "client_john_doe",
         "title": "John Doe Passport Scan",
-        "content": "PASSPORT DETAILS\nName: John Doe\nNationality: Canada\nPassport No: C98765432\nExpiry: 20 Dec 2030\nDOB: 1985-02-20\nIssuing Authority: Canadian Government"
+        "content": "CANADA - PASSPORT / PASSEPORT\n\nType: P\nCode: CAN\nPassport No: C98765432\n\nSurname: DOE\nGiven Names: JOHN MICHAEL\nNationality: CANADIAN\n\nDate of Birth: 20 FEB / FEV 1985\nSex: M\nPlace of Birth: TORONTO, CANADA\n\nDate of Issue: 21 DEC / DEC 2020\nDate of Expiration: 20 DEC / DEC 2030\nIssuing Authority: GATINEAU\n\n<<T<CANDOE<<JOHN<MICHAEL<<<<<<<<<<<<<<<<<<<<\nC98765432<8CAN8502201M3012208<<<<<<<<<<<<<<<2"
       },
       {
         "id": "doc_doe_rpq",
         "client_id": "client_john_doe",
         "title": "Risk Profile Questionnaire 2024 - Doe",
-        "content": "Client prefers balanced approach. Investment horizon: 10-15 years. Goal: Growth and Income."
+        "content": "CLIENT NAME: John Doe\nDATE: February 1, 2024\n\nRISK TOLERANCE SCORE: 65/100 (Moderate-Growth)\n\nNotes:\nClient prefers a balanced approach (60/40 split). Investment horizon is 10-15 years. Primary goal is growth with some income generation.\nHe is an entrepreneur and has significant risk in his own business, so he prefers his liquid portfolio to be more stable."
       },
       {
         "id": "doc_doe_utility_bill",
         "client_id": "client_john_doe",
         "title": "Utility Bill - Proof of Address",
-        "content": "ELECTRICITY BILL\nCustomer: John Doe\nService Address: 456 Maple Avenue, Toronto, ON M5V 2T6\nBilling Date: Oct 01 2023\nThis document serves as proof of residence."
+        "content": "TORONTO HYDRO\nELECTRICITY BILL\n\nAccount Number: 555-123-456\nStatement Date: Oct 01, 2023\n\nSERVICE ADDRESS:\nJohn Doe\n456 Maple Avenue, Unit 4B\nToronto, ON M5V 2T6\nCanada\n\nBilling Summary:\nPrevious Balance: $0.00\nCurrent Charges: $145.20\nTotal Amount Due: $145.20\nDue Date: Oct 20, 2023\n\nThis document confirms service at the address listed above for John Doe."
       },
       {
         "id": "doc_smith_ips_2023",
         "client_id": "client_smith_family",
         "title": "Smith Family IPS 2023",
-        "content": "INVESTMENT POLICY STATEMENT\nTarget Allocation: 40% Equities, 60% Fixed Income.\nLiquidity Constraints: $500k monthly cash requirement.\nESG Mandate: No investments in tobacco, firearms, or fossil fuel extraction companies.\nPerformance Benchmark: 60/40 Blended Index."
+        "content": "INVESTMENT POLICY STATEMENT\nPREPARED FOR: The Arthur Smith Family Office\nDATE: March 10, 2023\n\n1. EXECUTIVE SUMMARY\nThe primary objective is capital preservation with conservative growth (CPI + 3%).\n\n2. ASSET ALLOCATION\n- Global Equities: 40%\n- Fixed Income: 50%\n- Cash/Equivalents: 10%\n\n3. LIQUIDITY REQUIREMENTS\nThe portfolio must generate and distribute $500,000 monthly to the Family Operating Account to cover expenses.\n\n4. INVESTMENT RESTRICTIONS (ESG MANDATE)\nThe client strictly prohibits investment in companies deriving >5% revenue from:\n- Tobacco production or distribution\n- Firearms and ammunition\n- Fossil fuel extraction (coal, oil sands)\n\n5. BENCHMARK\n60% MSCI World / 40% Bloomberg Global Aggregate Bond Index."
       },
       {
         "id": "doc_smith_portfolio_review",
         "client_id": "client_smith_family",
         "title": "Q3 2023 Portfolio Review",
-        "content": "Portfolio performance: +4.2%. Current Allocation: 45% Equity, 55% Fixed Income (Drift noted). Holdings include: Apple, Microsoft, Tesla, GreenEnergy ETF. No prohibited assets detected."
+        "content": "SMITH FAMILY OFFICE - QUARTERLY REVIEW\nPeriod: July 1 - Sept 30, 2023\n\nPERFORMANCE SUMMARY:\nPortfolio Return: +4.2%\nBenchmark Return: +3.8%\n\nALLOCATION CHECK:\nEquity: 45% (Overweight)\nFixed Income: 55% (Underweight)\nAction: Rebalance recommended.\n\nTOP HOLDINGS:\n1. Apple Inc.\n2. Microsoft Corp.\n3. Tesla Inc.\n4. iShares Global Clean Energy ETF\n\nCOMPLIANCE CHECK:\nNo holdings found in restricted sectors (Tobacco, Firearms, Fossil Fuels). Portfolio remains ESG compliant."
       },
       {
         "id": "doc_miller_note_oct",
         "client_id": "client_david_miller",
         "title": "Meeting Note - Oct 12 2023",
-        "content": "Met with David at the club. He mentioned he is considering buying a vineyard in France next summer (2024). Wants to discuss liquidity for a €2M down payment. Also expressed concern about tech sector overexposure."
+        "content": "ATTENDEES: David Miller (Client), Alex Advisor (RM)\nLOCATION: The City Club\nDATE: Oct 12, 2023\n\nKEY DISCUSSION POINTS:\n1. David mentioned he is seriously considering buying a vineyard in Provence, France next summer (2024). Estimated cost €5-8M.\n2. He needs to discuss liquidity options for a €2M down payment by Q2 2024.\n3. Expressed concern about his portfolio's overexposure to the Tech sector given his recent startup exit. Wants to diversify into Real Estate or Private Credit.\n\nACTION ITEMS:\n- Prepare liquidity analysis for €2M withdrawal.\n- Send research on French luxury property market."
       },
       {
         "id": "doc_miller_note_dec",
         "client_id": "client_david_miller",
         "title": "Call Summary - Dec 05 2023",
-        "content": "David called to update beneficiary details. His daughter Emily is turning 18 soon. He wants to set up a separate trust for her education."
+        "content": "CALL LOG\nClient: David Miller\nDate: Dec 05, 2023\nDuration: 15 mins\n\nSUMMARY:\nDavid called regarding his estate planning. His daughter, Emily Miller, is turning 18 in January. He wants to set up a separate educational trust for her.\nHe asked if we can recommend a trust lawyer in California.\n\nHe also confirmed the France property idea is still active."
       },
       {
         "id": "doc_chen_trust_deed",
         "client_id": "client_chen_trust",
         "title": "Chen Global Trust - Deed of Settlement",
-        "content": "TRUST DEED\nSettlor: Li Chen\nTrustees: Global Trust Co.\nBeneficiaries: Lucas Chen (Son), Emily Chen (Daughter), and future lineal descendants.\nDistribution Rules: Principal accessible only after beneficiaries reach age 30."
+        "content": "DEED OF SETTLEMENT\n\nTHIS DEED OF SETTLEMENT is made on the 1st day of January 2020\n\nBETWEEN:\n(1) Li Chen of 123 Park Ave, NY (the \"Settlor\")\n(2) Global Trust Company Ltd (the \"Trustee\")\n\nWHEREAS the Settlor wishes to establish an irrevocable trust known as THE CHEN GLOBAL TRUST.\n\nBENEFICIARIES:\n1. Lucas Chen (Son)\n2. Emily Chen (Daughter)\n3. Any future lineal descendants of the Settlor.\n\nDISTRIBUTION PROVISIONS:\n- Income may be distributed at Trustee discretion.\n- Principal shall remain in trust until the respective beneficiary reaches the age of 30.\n- Upon reaching age 30, the beneficiary may request up to 50% of their share.\n- The remainder shall be distributed at age 35."
       },
       {
         "id": "doc_chen_will",
         "client_id": "client_chen_trust",
         "title": "Last Will and Testament - Li Chen",
-        "content": "I, Li Chen, residing in New York, hereby declare... All personal property to spouse. Residual estate to pour over into the Chen Global Trust."
+        "content": "LAST WILL AND TESTAMENT of LI CHEN\n\nI, Li Chen, residing in New York, NY, being of sound mind, hereby declare this to be my Last Will and Testament.\n\nARTICLE I: I revoke all prior Wills.\n\nARTICLE II: I give all my tangible personal property to my spouse, Wei Chen.\n\nARTICLE III: I give the rest, residue, and remainder of my estate to the Trustee of THE CHEN GLOBAL TRUST, to be added to the trust property and held in accordance with the Trust Deed dated Jan 1, 2020.\n\nSigned this 15th day of March, 2022.\nLi Chen"
       },
       {
         "id": "doc_fox_k1_greentech",
         "client_id": "client_robert_fox",
         "title": "Schedule K-1 (Form 1065) - GreenTech Ventures",
-        "content": "Partner's Share of Income, Deductions, Credits, etc.\nPartner: Robert Fox\nPartnership: GreenTech Ventures LP\nOrdinary Business Income: $450,000\nNet Rental Real Estate Income: ($12,000)"
+        "content": "Schedule K-1 (Form 1065)\nDepartment of the Treasury - Internal Revenue Service\nFor calendar year 2023\n\nPART I: Information about the Partnership\nA. Partnership EIN: 99-1234567\nB. Name: GreenTech Ventures LP\n\nPART II: Information about the Partner\nE. Name: Robert Fox\nF. Address: 789 Wall Street, NY\n\nPART III: Partner's Share of Current Year Income, Deductions, Credits\n1. Ordinary Business Income (Loss): $450,000\n2. Net Rental Real Estate Income (Loss): ($12,000)\n\n19. Distributions: $200,000"
       },
       {
         "id": "doc_fox_1099",
         "client_id": "client_robert_fox",
         "title": "Consolidated 1099 - 2023",
-        "content": "Form 1099-DIV, 1099-INT, 1099-B.\nTotal Ordinary Dividends: $25,000\nTotal Interest Income: $8,400\nBroker: Morgan Stanley"
+        "content": "CONSOLIDATED FORM 1099\nBroker: Morgan Stanley Wealth Management\nAccount: Robert Fox - Individual\nTax Year: 2023\n\nFORM 1099-DIV (Dividends and Distributions)\n1a. Total Ordinary Dividends: $25,000.00\n1b. Qualified Dividends: $18,500.00\n\nFORM 1099-INT (Interest Income)\n1. Interest Income: $8,400.00\n\nFORM 1099-B (Proceeds from Broker and Barter Exchange Transactions)\nSummary of Proceeds: $1,250,000.00\nCost Basis: $950,000.00\nNet Gain: $300,000.00"
       }
     ]
   },
@@ -174,7 +174,7 @@
         {
           "query_id": "q_ips_03",
           "query_text": "ESG focus conservative growth",
-          "expected_result_ids": ["client_smith_family", "doc_smith_ips_2023"]
+          "expected_result_ids": ["doc_smith_ips_2023"]
         }
       ]
     },
