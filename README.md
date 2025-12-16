@@ -26,8 +26,8 @@ However, this comes with a **tradeoff on semantic accuracy**. Larger models (e.g
 3. Register it in the dependency injection container (`src/app/containers.py`)
 
 Similarly, the `RerankerService` interface can be extended for more powerful reranking models.
+> In case the model generates different embedding dimensions and contet window, some additional changes are required such as modifying the chunking strategy and vector column in the DB
 
-## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
@@ -223,7 +223,7 @@ When a document is uploaded, it goes through the following pipeline:
   | Recursive   |          | Generate    |          | LLM Summary |
   | Text        | -------> | Embeddings  | -------> | (Optional)  |
   | Splitter    |          | (MiniLM)    |          | Claude/     |
-  | 300 chars   |          | 384 dims    |          | Gemini      |
+  | 256 tokens  |          | 384 dims    |          | Gemini      |
   +-------------+          +-------------+          +-------------+
                                                           |
                                                           v
@@ -236,7 +236,7 @@ When a document is uploaded, it goes through the following pipeline:
 
 **Processing Steps:**
 
-1. **Chunking**: Documents are split using `RecursiveChunkingStrategy` (default: 300 chars, 50 char overlap)
+1. **Chunking**: Documents are split using `RecursiveChunkingStrategy` with token-based splitting (default: 256 tokens, 25 token overlap). The chunking uses the embedding model's tokenizer for accurate token counting.
 2. **Embedding**: Each chunk is embedded using `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions)
 3. **Summarization** (optional): If enabled, an LLM generates a document summary
 4. **Persistence**: Chunks with embeddings are stored in PostgreSQL with pgvector
@@ -352,8 +352,8 @@ Key settings in `src/app/config.py` (configurable via environment variables):
 | `S3_ENDPOINT_URL` | `None` | S3 endpoint (set for LocalStack) |
 | `EMBEDDING_MODEL_NAME` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
 | `RERANKER_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker model |
-| `CHUNK_SIZE` | `300` | Document chunk size in characters |
-| `CHUNK_OVERLAP` | `50` | Overlap between chunks |
+| `CHUNK_SIZE` | `256` | Document chunk size in tokens |
+| `CHUNK_OVERLAP` | `25` | Overlap between chunks in tokens |
 | `SUMMARIZATION_ENABLED` | `true` | Enable LLM summarization |
 | `SUMMARIZATION_PROVIDER` | `claude` | LLM provider (`claude` or `gemini`) |
 
@@ -415,15 +415,7 @@ Client Interactions & Life Events |   0.4444 |     0.6667 |   0.5000
 Estate Planning & Trusts          |   0.6667 |     1.0000 |   0.7540
 Tax & Reporting                   |   0.6667 |     0.6667 |   0.6667
 --------------------------------------------------------------------
-AVERAGE                           |   0.6722 |     0.8167 |   0.7095
-====================================================================
-```
-
-**Interpreting Results:**
-- **MRR 0.67**: On average, the first relevant result appears around position 1.6
-- **Recall@5 0.81**: About 81% of relevant items are found in the top 5 results
-- **NDCG@5 0.71**: Results are reasonably well-ordered by relevance
-
+AVERAGE                           |   0.7833 |     0.8167 |   0.7921
 **Test Data:**
 
 The evaluation uses `tests/e2e_eval/data/synthetic_wealth_data.json` containing:

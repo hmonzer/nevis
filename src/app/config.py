@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     search_max_top_k: int = 100
     client_search_default_threshold: float = 0.1
 
-    # Chunking Settings
-    chunk_size: int = 300
-    chunk_overlap: int = 50
+    # Chunking Settings (token-based, using embedding model's tokenizer)
+    chunk_size: int = 256  # Maximum tokens per chunk
+    chunk_overlap: int = 25  # ~10% overlap in tokens
 
     # Summarization Settings
     summarization_enabled: bool = True  # Enable/disable summarization feature

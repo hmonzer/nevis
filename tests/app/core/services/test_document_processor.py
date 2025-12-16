@@ -2,34 +2,13 @@
 from uuid import uuid4
 
 import pytest
-from sentence_transformers import SentenceTransformer
 from src.app.core.services.document_processor import DocumentProcessor, ProcessingResult
-from src.app.core.services.embedding import SentenceTransformerEmbedding
 from src.app.core.services.summarization import SummarizationService
-from src.app.core.services.chunking import RecursiveChunkingStrategy
 
 
 # =============================================================================
 # Fixtures
 # =============================================================================
-
-@pytest.fixture
-def chunking_service():
-    """Create a chunking service."""
-    return RecursiveChunkingStrategy(chunk_size=100, chunk_overlap=20)
-
-
-@pytest.fixture(scope="module")
-def sentence_transformer_model():
-    """Create a SentenceTransformer model instance (expensive, module-scoped)."""
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-
-@pytest.fixture
-def embedding_service(sentence_transformer_model):
-    """Create an embedding service."""
-    return SentenceTransformerEmbedding(sentence_transformer_model)
-
 
 @pytest.fixture
 def document_processor(chunking_service, embedding_service):
@@ -111,7 +90,8 @@ async def test_process_text_chunks_ordered_by_index(document_processor):
     """Test that chunks are created with correct sequential indices."""
     # Arrange
     document_id = uuid4()
-    content = "A" * 500  # Long content to create multiple chunks
+    # Long content to create multiple chunks (need to exceed chunk_size tokens)
+    content = "This is a sentence that will be repeated many times to create chunks. " * 50
 
     # Act
     result = await document_processor.process_text(document_id, content)
@@ -146,20 +126,37 @@ async def test_process_text_embeddings_are_different_for_different_chunks(docume
     # Arrange
     document_id = uuid4()
 
-    # Content with distinctly different sections
+    # Content with distinctly different sections - needs to exceed chunk_size tokens (256) to split
+    # Generate enough content to create at least 2 chunks
     content = """
-    Python is a high-level programming language.
-    It was created by Guido van Rossum.
-    """ + "X" * 200 + """
-    The weather today is sunny and warm.
-    People enjoy going to the beach in summer.
+    Python is a high-level programming language created by Guido van Rossum in the late 1980s.
+    It is widely used for web development, data science, machine learning, and artificial intelligence.
+    Python has a simple and readable syntax that makes it easy for beginners to learn programming.
+    The language supports multiple programming paradigms including procedural, object-oriented, and functional.
+    Python has a large standard library and an active community of developers around the world.
+    The Python Package Index contains thousands of third-party modules for various applications.
+    Django and Flask are popular web frameworks built with Python for creating web applications.
+    NumPy, Pandas, and Matplotlib are essential libraries for data science and scientific computing.
+    TensorFlow and PyTorch are leading frameworks for deep learning and neural network development.
+    Python is also used extensively in automation, scripting, and system administration tasks.
+    """ + """
+    The weather today is sunny and warm with clear blue skies stretching overhead across the horizon.
+    People enjoy going to the beach in summer to swim in the ocean and relax on the sandy shores.
+    Sunscreen is very important to protect skin from harmful ultraviolet rays from the sun.
+    Many families plan their annual vacations around popular beach destinations around the world.
+    The ocean waves provide a calming and soothing sound that many people find therapeutic and relaxing.
+    Surfing has become an increasingly popular water sport enjoyed by millions of enthusiasts globally.
+    Beach volleyball and sandcastle building are favorite activities for children and adults alike.
+    Coastal ecosystems support diverse marine life including fish, dolphins, sea turtles, and seabirds.
+    Climate change and rising sea levels pose significant threats to coastal communities worldwide.
+    Marine conservation efforts aim to protect ocean habitats and endangered species from human impact.
     """
 
     # Act
     result = await document_processor.process_text(document_id, content)
 
     # Assert
-    assert len(result.chunks) >= 2
+    assert len(result.chunks) >= 2, f"Expected at least 2 chunks but got {len(result.chunks)}"
 
     # Get embeddings for first two chunks
     emb1 = np.array(result.chunks[0].embedding)

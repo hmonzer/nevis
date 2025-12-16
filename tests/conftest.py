@@ -309,3 +309,27 @@ def search_service(test_container):
 def search_service_no_rerank(test_container):
     """Get unified search service WITHOUT reranking from container."""
     return test_container.search_service_no_rerank()
+
+
+@pytest.fixture
+def chunking_service(test_container):
+    """Get chunking service from container."""
+    return test_container.chunking_service()
+
+
+@pytest.fixture
+def tokenizer(test_container):
+    """Get the tokenizer singleton from container."""
+    return test_container.tokenizer()
+
+
+@pytest.fixture
+def text_splitter(test_container):
+    """Get the text splitter singleton from container."""
+    return test_container.text_splitter()
+
+
+@pytest.fixture
+def tokenizer_model(test_container):
+    """Get the tokenizer model name from container config for custom chunking strategies."""
+    return test_container.config().embedding_model_name
