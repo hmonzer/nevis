@@ -151,7 +151,7 @@ async def run_eval_use_case(
     qrels = Qrels(qrels_dict)
     run = Run(run_dict)  # type: ignore
 
-    ranx_metrics = evaluate(qrels, run, metrics=["mrr", "recall@5", "ndcg@5"])  # type: ignore
+    ranx_metrics = evaluate(qrels, run, metrics=["mrr", "recall@5", "ndcg@5", "precision@5"])  # type: ignore
 
     # Convert to our metrics model
     metrics = EvaluationMetrics.from_ranx_result(ranx_metrics)
@@ -160,6 +160,7 @@ async def run_eval_use_case(
     print(f"  MRR:       {metrics.mrr:.4f}")
     print(f"  Recall@5:  {metrics.recall_at_5:.4f}")
     print(f"  NDCG@5:    {metrics.ndcg_at_5:.4f}")
+    print(f"  Precision@5:    {metrics.precision_at_5:.4f}")
 
     return UseCaseResult(
         use_case_title=use_case.title,

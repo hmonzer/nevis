@@ -1,7 +1,7 @@
 """Text chunking strategies using the Strategy Pattern."""
 from abc import ABC, abstractmethod
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import TextSplitter
 
 
 class ChunkingStrategy(ABC):
@@ -26,39 +26,26 @@ class ChunkingStrategy(ABC):
         pass
 
 
-#TODO: Add Tests for Recursive Chunking Strategy
 class RecursiveChunkingStrategy(ChunkingStrategy):
     """
-    Recursive chunking strategy using langchain's RecursiveCharacterTextSplitter.
+    Recursive chunking strategy using langchain's TextSplitter
+    with a HuggingFace tokenizer for accurate token-based splitting.
 
     This strategy splits text recursively by different separators (paragraphs, sentences, etc.)
-    to create semantically meaningful chunks.
+    to create semantically meaningful chunks sized by tokens rather than characters.
+    Using token-based chunking ensures chunks respect the embedding model's context window.
     """
 
-    def __init__(
-        self,
-        chunk_size: int = 400,
-        chunk_overlap: int = 50,
-        separators: list[str] | None = None
-    ):
+    def __init__(self, splitter: TextSplitter):
         """
-        Initialize the recursive chunking strategy.
+        Initialize the recursive chunking strategy with an injected text splitter.
 
         Args:
-            chunk_size: Maximum size of each chunk in characters
-            chunk_overlap: Number of characters to overlap between chunks
-            separators: List of separators to use for splitting (default: ["\n\n", "\n", " ", ""])
+            splitter: Pre-configured TextSplitter instance (typically RecursiveCharacterTextSplitter).
+                     The splitter should be created with a HuggingFace tokenizer
+                     for accurate token counting.
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.separators = separators or ["\n\n", "\n", ". ", " ", ""]
-
-        self._splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            separators=self.separators,
-            length_function=len,
-        )
+        self._splitter = splitter
 
     def chunk_text(self, text: str) -> list[str]:
         """
@@ -73,5 +60,4 @@ class RecursiveChunkingStrategy(ChunkingStrategy):
         if not text or not text.strip():
             return []
 
-        chunks = self._splitter.split_text(text)
-        return chunks
+        return self._splitter.split_text(text)

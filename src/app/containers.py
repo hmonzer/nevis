@@ -1,7 +1,9 @@
 """Dependency injection container using dependency-injector library."""
 from dependency_injector import containers, providers
 
+from langchain_text_splitters import RecursiveCharacterTextSplitter, TextSplitter
 from sentence_transformers import SentenceTransformer, CrossEncoder
+from transformers import AutoTokenizer
 
 from src.app.config import Settings
 from src.shared.database.database import Database, DatabaseSettings
@@ -51,6 +53,36 @@ def create_entity_mapper(
             Document: document_mapper.to_entity,
             DocumentChunk: document_chunk_mapper.to_entity,
         }
+    )
+
+
+def create_tokenizer(model_name: str) -> AutoTokenizer:
+    """
+    Factory function to create HuggingFace tokenizer.
+
+    The tokenizer is used for accurate token counting during text chunking,
+    ensuring chunks respect the embedding model's context window.
+    """
+    return AutoTokenizer.from_pretrained(model_name)
+
+
+def create_text_splitter(
+    tokenizer: AutoTokenizer,
+    chunk_size: int,
+    chunk_overlap: int,
+    separators: list[str] | None = None,
+) -> TextSplitter:
+    """
+    Factory function to create text splitter with tokenizer-based splitting.
+
+    Uses the HuggingFace tokenizer to count tokens accurately, ensuring
+    chunks are sized by tokens rather than characters.
+    """
+    return RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+        tokenizer,  # type: ignore[arg-type]  # AutoTokenizer is compatible with PreTrainedTokenizerBase
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=separators or ["\n\n", "\n", ". ", " ", ""],
     )
 
 
@@ -134,10 +166,26 @@ class Container(containers.DeclarativeContainer):
 
     rrf = providers.Singleton(ReciprocalRankFusion, k=60)
 
-    chunking_service = providers.Singleton(
-        RecursiveChunkingStrategy,
+    # =========================================================================
+    # SINGLETONS - Text Processing (tokenizer and splitter for chunking)
+    # The tokenizer is loaded once and reused. It's stateless and thread-safe.
+    # The text splitter is configured once with chunk settings and reused.
+    # =========================================================================
+    tokenizer = providers.Singleton(
+        create_tokenizer,
+        model_name=config.provided.embedding_model_name,
+    )
+
+    text_splitter = providers.Singleton(
+        create_text_splitter,
+        tokenizer=tokenizer,
         chunk_size=config.provided.chunk_size,
         chunk_overlap=config.provided.chunk_overlap,
+    )
+
+    chunking_service = providers.Singleton(
+        RecursiveChunkingStrategy,
+        splitter=text_splitter,
     )
 
     # =========================================================================
