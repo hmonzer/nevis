@@ -1,30 +1,9 @@
 """Tests for the search API endpoint."""
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from src.app.main import create_app
-from src.client import NevisClient, CreateClientRequest
+from src.client import CreateClientRequest
 from src.client.schemas import SearchResultTypeEnum
-
-
-@pytest_asyncio.fixture(scope="module")
-async def test_app(test_settings_override):
-    """Create test application with test database."""
-    app = create_app()
-    yield app
-
-
-@pytest_asyncio.fixture
-async def nevis_client(test_app, clean_database, localstack_container, s3_storage):
-    """Create Nevis client for testing with clean database and S3."""
-    transport = ASGITransport(app=test_app)
-    http_client = AsyncClient(transport=transport, base_url="http://test")
-    client = NevisClient(base_url="http://test", client=http_client)
-
-    async with client:
-        yield client
-
 
 @pytest.mark.asyncio
 async def test_search_empty_database(nevis_client):

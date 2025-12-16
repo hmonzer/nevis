@@ -2,55 +2,29 @@
 import pytest
 from uuid import uuid4
 from pydantic.v1 import EmailStr
-from sentence_transformers import SentenceTransformer
 
 from src.client import CreateClientRequest
 from src.client.schemas import CreateDocumentRequest
 from src.app.core.domain.models import Client
 from src.app.core.services.document_processor import DocumentProcessor, ProcessingResult
 from src.app.core.services.summarization import SummarizationService
-from src.app.core.services.chunking import RecursiveChunkingStrategy
-from src.app.core.services.embedding import SentenceTransformerEmbedding
-
-
-# =============================================================================
-# Shared Test Fixtures for Document Processing
-# =============================================================================
-
-@pytest.fixture(scope="module")
-def embedding_model():
-    """Shared embedding model (expensive to load)."""
-    return SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
-
 
 @pytest.fixture
-def chunking_service():
-    """Chunking service with default settings."""
-    return RecursiveChunkingStrategy(chunk_size=300, chunk_overlap=50)
-
-
-@pytest.fixture
-def embedding_service(embedding_model):
-    """Embedding service using shared model."""
-    return SentenceTransformerEmbedding(embedding_model)
-
-
-@pytest.fixture
-def document_processor(chunking_service, embedding_service):
-    """Document processor without summarization."""
+def document_processor_no_summary(test_container):
+    """Document processor without summarization (for testing without LLM)."""
     return DocumentProcessor(
-        chunking_strategy=chunking_service,
-        embedding_service=embedding_service,
+        chunking_strategy=test_container.chunking_service(),
+        embedding_service=test_container.embedding_service(),
         summarization_service=None,
     )
 
 
 @pytest.fixture
-def document_processor_with_summary(chunking_service, embedding_service, mock_summarization_service):
+def document_processor_with_summary(test_container, mock_summarization_service):
     """Document processor with mock summarization."""
     return DocumentProcessor(
-        chunking_strategy=chunking_service,
-        embedding_service=embedding_service,
+        chunking_strategy=test_container.chunking_service(),
+        embedding_service=test_container.embedding_service(),
         summarization_service=mock_summarization_service,
     )
 
@@ -208,11 +182,11 @@ async def test_document_processing_with_summary(document_processor_with_summary,
 
 
 @pytest.mark.asyncio
-async def test_document_processing_without_summary(document_processor):
+async def test_document_processing_without_summary(document_processor_no_summary):
     """Test that document processor works without summarization service."""
     content = "This is a test document without summarization."
 
-    result = await document_processor.process_text(uuid4(), content)
+    result = await document_processor_no_summary.process_text(uuid4(), content)
 
     assert isinstance(result, ProcessingResult)
     assert result.summary is None
@@ -221,36 +195,28 @@ async def test_document_processing_without_summary(document_processor):
 
 @pytest.mark.asyncio
 async def test_document_service_stores_summary(
-    clean_database,
+    test_container,
     unit_of_work,
     s3_storage,
-    chunking_service,
-    embedding_service,
+    client_repository,
+    document_repository,
 ):
     """Test that DocumentService stores summary in database after processing."""
     from src.app.core.services.document_service import DocumentService
-    from src.app.infrastructure.client_repository import ClientRepository
-    from src.app.infrastructure.document_repository import DocumentRepository
-    from src.app.infrastructure.mappers.client_mapper import ClientMapper
-    from src.app.infrastructure.mappers.document_mapper import DocumentMapper
-
-    # Setup repositories
-    client_repo = ClientRepository(clean_database, ClientMapper())
-    document_repo = DocumentRepository(clean_database, DocumentMapper())
 
     # Create processor with mock summarization
     mock_summary = MockSummarizationService(
         summary_text="Summary: A test document about financial planning for retirement."
     )
     processor = DocumentProcessor(
-        chunking_strategy=chunking_service,
-        embedding_service=embedding_service,
+        chunking_strategy=test_container.chunking_service(),
+        embedding_service=test_container.embedding_service(),
         summarization_service=mock_summary,
     )
 
     document_service = DocumentService(
-        client_repository=client_repo,
-        document_repository=document_repo,
+        client_repository=client_repository,
+        document_repository=document_repository,
         unit_of_work=unit_of_work,
         blob_storage=s3_storage,
         document_processor=processor,
@@ -280,7 +246,7 @@ async def test_document_service_stores_summary(
     await document_service.process_document(document.id, content)
 
     # Verify summary was stored
-    retrieved_document = await document_repo.get_by_id(document.id)
+    retrieved_document = await document_repository.get_by_id(document.id)
     assert retrieved_document is not None
     assert retrieved_document.summary == mock_summary.summary_text
     assert retrieved_document.status.value == "PROCESSED"
