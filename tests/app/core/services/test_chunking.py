@@ -1,5 +1,4 @@
 """Tests for the chunking service with token-based splitting."""
-import pytest
 
 from src.app.containers import create_text_splitter
 from src.app.core.services.chunking import RecursiveChunkingStrategy
