@@ -232,11 +232,11 @@ async def test_reranking_produces_different_scores(
         f"Cosine: {cosine_score:.4f}, Reranked: {reranked_score:.4f}"
     )
 
-    print(f"\n=== Reranking Impact ===")
+    print("\n=== Reranking Impact ===")
     print(f"Top result cosine similarity score: {cosine_score:.4f}")
     print(f"Top result cross-encoder score: {reranked_score:.4f}")
     print(f"Score difference: {abs(reranked_score - cosine_score):.4f}")
-    print(f"Both methods ranked utility bill as most relevant ✓")
+    print("Both methods ranked utility bill as most relevant ✓")
 
 
 @pytest.mark.asyncio
