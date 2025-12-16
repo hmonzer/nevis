@@ -144,7 +144,7 @@ class Container(containers.DeclarativeContainer):
 
     cross_encoder_model = providers.Singleton(
         CrossEncoder,
-        model_name=config.provided.reranker_model_name,
+        model_name=config.provided.chunk_reranker_model_name,
     )
 
     # =========================================================================
@@ -309,7 +309,7 @@ class Container(containers.DeclarativeContainer):
         search_repository=chunks_search_repository,
         rrf=rrf,
         reranker_service=reranker_service,
-        reranker_score_threshold=config.provided.reranker_score_threshold,
+        reranker_score_threshold=config.provided.chunk_reranker_score_threshold,
     )
 
     # Variant without reranking (for testing/comparison)

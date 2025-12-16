@@ -17,7 +17,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 async def search(
     q: Annotated[str, Query(min_length=1, description="Search query string")],
     top_k: Annotated[int, Query(gt=0, le=100, description="Maximum number of results")] = 3,
-    threshold: Annotated[float, Query(ge=-1.0, le=1.0, description="Minimum similarity threshold")] = 0.5,
+    threshold: Annotated[float, Query(ge=-1.0, le=1.0, description="Minimum similarity threshold")] = 0.3,
     service: SearchService = Depends(Provide[Container.search_service])
 ) -> list[SearchResultResponse]:
     """

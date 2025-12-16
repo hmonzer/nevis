@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Positive scores indicate relevance, negative scores indicate irrelevance
     # A threshold of 0.0 filters out clearly irrelevant results
     # Use -2.0 to -3.0 for more permissive filtering (includes borderline results)
-    chunk_reranker_score_threshold: float = 0.0
+    chunk_reranker_score_threshold: float = 2.0
 
     # Search Settings
     search_default_top_k: int = 3

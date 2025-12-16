@@ -345,17 +345,17 @@ After initial retrieval, results are **reranked** using a CrossEncoder model:
 
 Key settings in `src/app/config.py` (configurable via environment variables):
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `DATABASE_URL` | `postgresql+asyncpg://localhost/nevis` | Database connection string |
-| `S3_BUCKET_NAME` | `nevis-documents` | S3 bucket for document storage |
-| `S3_ENDPOINT_URL` | `None` | S3 endpoint (set for LocalStack) |
-| `EMBEDDING_MODEL_NAME` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-| `RERANKER_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker model |
-| `CHUNK_SIZE` | `256` | Document chunk size in tokens |
-| `CHUNK_OVERLAP` | `25` | Overlap between chunks in tokens |
-| `SUMMARIZATION_ENABLED` | `true` | Enable LLM summarization |
-| `SUMMARIZATION_PROVIDER` | `claude` | LLM provider (`claude` or `gemini`) |
+| Setting                     | Default | Description |
+|-----------------------------|---------|-------------|
+| `DATABASE_URL`              | `postgresql+asyncpg://localhost/nevis` | Database connection string |
+| `S3_BUCKET_NAME`            | `nevis-documents` | S3 bucket for document storage |
+| `S3_ENDPOINT_URL`           | `None` | S3 endpoint (set for LocalStack) |
+| `EMBEDDING_MODEL_NAME`      | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
+| `CHUNK_RERANKER_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker model |
+| `CHUNK_SIZE`                | `256` | Document chunk size in tokens |
+| `CHUNK_OVERLAP`             | `25` | Overlap between chunks in tokens |
+| `SUMMARIZATION_ENABLED`     | `true` | Enable LLM summarization |
+| `SUMMARIZATION_PROVIDER`    | `claude` | LLM provider (`claude` or `gemini`) |
 
 ## Testing
 

@@ -154,7 +154,7 @@ async def run_eval_use_case(
         qrels_dict[test.query_id] = build_qrels_dict(test, id_map)
 
         # Execute search using unified search service
-        request = SearchRequest(query=test.query_text, top_k=top_k, threshold=0.5)
+        request = SearchRequest(query=test.query_text, top_k=top_k, threshold=0.3)
         results = await search_service.search(request)
 
         num_clients = sum(1 for r in results if r.type == 'CLIENT')
