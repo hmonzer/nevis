@@ -23,6 +23,7 @@ class DocumentService:
         unit_of_work: UnitOfWork,
         blob_storage: S3BlobStorage,
         document_processor: DocumentProcessor,
+        s3_key_pattern: str = "clients/{client_id}/documents/{document_id}.txt",
     ):
         """
         Initialize the document service.
@@ -33,12 +34,14 @@ class DocumentService:
             unit_of_work: Unit of work for database transactions
             blob_storage: S3 blob storage for file operations
             document_processor: Processor for document chunking and embedding
+            s3_key_pattern: Pattern for S3 document keys. Supports {client_id} and {document_id} placeholders.
         """
         self.client_repository = client_repository
         self.document_repository = document_repository
         self.unit_of_work = unit_of_work
         self.blob_storage = blob_storage
         self.document_processor = document_processor
+        self.s3_key_pattern = s3_key_pattern
 
     async def create_document(
         self,
@@ -65,7 +68,7 @@ class DocumentService:
             raise EntityNotFound("Client", client_id)
 
         document_id = uuid4()
-        s3_key = f"clients/{client_id}/documents/{document_id}.txt"
+        s3_key = self.s3_key_pattern.format(client_id=client_id, document_id=document_id)
         document = Document(
             id=document_id,
             client_id=client_id,

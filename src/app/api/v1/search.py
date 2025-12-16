@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from dependency_injector.wiring import Provide, inject
 
 from src.app.containers import Container
+from src.app.config import Settings
 from src.app.core.domain.models import SearchRequest
 from src.app.core.services.search_service import SearchService
 from src.client.schemas import SearchResultResponse
@@ -16,8 +17,9 @@ router = APIRouter(prefix="/search", tags=["search"])
 @inject
 async def search(
     q: Annotated[str, Query(min_length=1, description="Search query string")],
-    top_k: Annotated[int, Query(gt=0, le=100, description="Maximum number of results")] = 3,
-    service: SearchService = Depends(Provide[Container.search_service])
+    top_k: Annotated[int | None, Query(gt=0, le=100, description="Maximum number of results")] = None,
+    service: SearchService = Depends(Provide[Container.search_service]),
+    config: Settings = Depends(Provide[Container.config]),
 ) -> list[SearchResultResponse]:
     """
     Search across clients and documents using hybrid search.
@@ -28,13 +30,16 @@ async def search(
 
     Args:
         q: The search query string
-        top_k: Maximum number of results to return (default: 3, max: 100)
+        top_k: Maximum number of results to return (default from config, max: 100)
 
     Returns:
         List of search results containing matched clients and documents,
         ranked by relevance score
     """
-    request = SearchRequest(query=q, top_k=top_k)
+    # Use config default if top_k not specified
+    effective_top_k = top_k if top_k is not None else config.search.default_top_k
+
+    request = SearchRequest(query=q, top_k=effective_top_k)
     results = await service.search(request)
 
     return [to_search_result_response(result) for result in results]

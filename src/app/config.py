@@ -1,70 +1,178 @@
+"""Application configuration with structured settings groups."""
 import logging
 from functools import lru_cache
 
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
 
-class Settings(BaseSettings):
-    """Application settings."""
+# =============================================================================
+# Nested Settings Models
+# =============================================================================
 
+
+class SearchSettings(BaseModel):
+    """Search pagination and general settings."""
+
+    default_top_k: int = 3
+    max_top_k: int = 100
+
+
+class ClientSearchSettings(BaseModel):
+    """
+    Client search settings using PostgreSQL pg_trgm.
+
+    Trigram similarity scores range from 0 to 1.
+    Higher threshold = stricter matching.
+    """
+
+    trgm_threshold: float = 0.32
+
+
+class ChunkSearchSettings(BaseModel):
+    """
+    Document chunk search settings for hybrid vector + keyword search.
+
+    Vector similarity uses cosine similarity ranging from -1 to 1.
+    Retrieval multipliers control how many candidates to fetch before ranking.
+    """
+
+    vector_similarity_threshold: float = 0.3
+    retrieval_multiplier_with_rerank: int = 3
+    retrieval_multiplier_no_rerank: int = 2
+
+
+class DocumentSearchSettings(BaseModel):
+    """
+    Document-level search settings.
+
+    chunk_retrieval_multiplier: How many chunks to fetch per requested document.
+    """
+
+    chunk_retrieval_multiplier: int = 5
+
+
+class RerankerSettings(BaseModel):
+    """
+    Cross-encoder reranker settings.
+
+    Score threshold filters results after reranking.
+    CrossEncoder logits typically range from -12 to +12.
+    Positive = relevant, negative = irrelevant.
+    0.0 is the decision boundary (50% relevance probability).
+    """
+
+    model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    score_threshold: float = 2.0
+
+
+class RRFSettings(BaseModel):
+    """
+    Reciprocal Rank Fusion settings.
+
+    k: Smoothing constant that reduces impact of high rankings.
+    Default 60 is the standard value from the original RRF paper.
+    """
+
+    k: int = 60
+
+
+class EmbeddingSettings(BaseModel):
+    """Embedding model settings."""
+
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+class ChunkingSettings(BaseModel):
+    """
+    Text chunking settings for document processing.
+
+    Values are in tokens (using the embedding model's tokenizer).
+    """
+
+    size: int = 256
+    overlap: int = 25
+
+
+class SummarizationSettings(BaseModel):
+    """
+    Document summarization settings.
+
+    max_words: Target word count for summaries.
+    max_tokens: Maximum tokens for LLM response.
+    """
+
+    enabled: bool = True
+    provider: str = "claude"  # Options: "claude", "gemini"
+    max_words: int = 100
+    max_tokens: int = 200
+
+
+class LLMSettings(BaseModel):
+    """LLM provider settings and API keys."""
+
+    claude_model: str = "claude-sonnet-4-20250514"
+    gemini_model: str = "models/gemini-flash-latest"
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+
+
+class S3Settings(BaseModel):
+    """S3 storage settings."""
+
+    bucket_name: str = "nevis-documents"
+    endpoint_url: str | None = None  # For LocalStack: http://localhost:4566
+    document_key_pattern: str = "clients/{client_id}/documents/{document_id}.txt"
+
+
+class AWSSettings(BaseModel):
+    """AWS credentials and region settings."""
+
+    region: str = "eu-west-1"
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+
+
+# =============================================================================
+# Main Settings Class
+# =============================================================================
+
+
+class Settings(BaseSettings):
+    """
+    Application settings with nested configuration groups.
+
+    Environment variables use double underscore as delimiter for nested values.
+    Example: SEARCH__DEFAULT_TOP_K=5, EMBEDDING__MODEL_NAME=sentence-transformers/all-mpnet-base-v2
+    """
+
+    # Application metadata
     app_name: str = "Nevis API"
     app_version: str = "1.0.0"
+
+    # Database
     database_url: str = "postgresql+asyncpg://localhost/nevis"
 
-    # S3 Storage Settings
-    s3_bucket_name: str = "nevis-documents"
-    s3_endpoint_url: str | None = None  # For LocalStack, set to http://localhost:4566
-    aws_region: str = "eu-west-1"
-    aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
-
-    # ML Model Settings
-    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    chunk_reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # For production: BAAI/bge-reranker-v2-m3
-    # Search Threshold Settings
-    # Each search component has its own threshold suited to its scoring semantics
-
-    # Client Search (pg_trgm trigram similarity)
-    # Range: [0, 1] - Higher means stricter matching
-    # 0.1 is permissive, catches partial word matches
-    client_search_trgm_threshold: float = 0.32
-
-    # Document Chunk Vector Search (cosine similarity)
-    # Range: [-1, 1] - Higher means more similar vectors
-    # 0.3 balances recall with precision
-    chunk_vector_similarity_threshold: float = 0.3
-
-    # Reranker (CrossEncoder logits)
-    # Range: ~[-12, +12] - Positive = relevant, negative = irrelevant
-    # 0.0 is the decision boundary (50% relevance probability after sigmoid)
-    # Use -2.0 to -3.0 for more permissive filtering
-    chunk_reranker_score_threshold: float = 2.0
-
-    # Search Pagination Settings
-    search_default_top_k: int = 3
-    search_max_top_k: int = 100
-
-
-
-    # Chunking Settings (token-based, using embedding model's tokenizer)
-    chunk_size: int = 256  # Maximum tokens per chunk
-    chunk_overlap: int = 25  # ~10% overlap in tokens
-
-    # Summarization Settings
-    summarization_enabled: bool = True  # Enable/disable summarization feature
-    summarization_provider: str = "claude"  # Options: "claude", "gemini"
-    anthropic_api_key: str | None = None  # Anthropic API key for Claude
-    google_api_key: str | None = None  # Google API key for Gemini
-    claude_model: str = "claude-sonnet-4-20250514"  # Claude model for summarization
-    gemini_model: str = "models/gemini-flash-latest"  # Gemini model for summarization
+    # Nested settings groups
+    search: SearchSettings = SearchSettings()
+    client_search: ClientSearchSettings = ClientSearchSettings()
+    chunk_search: ChunkSearchSettings = ChunkSearchSettings()
+    document_search: DocumentSearchSettings = DocumentSearchSettings()
+    reranker: RerankerSettings = RerankerSettings()
+    rrf: RRFSettings = RRFSettings()
+    embedding: EmbeddingSettings = EmbeddingSettings()
+    chunking: ChunkingSettings = ChunkingSettings()
+    summarization: SummarizationSettings = SummarizationSettings()
+    llm: LLMSettings = LLMSettings()
+    s3: S3Settings = S3Settings()
+    aws: AWSSettings = AWSSettings()
 
     model_config = SettingsConfigDict(
-        # pydantic-settings reads from environment variables first, then .env file
-        # In Docker, env vars are injected by docker-compose from .env file
         env_file=".env",
         env_file_encoding="utf-8",
+        env_nested_delimiter="__",
         case_sensitive=False,
         extra="ignore",
     )
@@ -72,11 +180,11 @@ class Settings(BaseSettings):
     @property
     def summarization_available(self) -> bool:
         """Check if summarization is enabled and has required API key."""
-        if not self.summarization_enabled:
+        if not self.summarization.enabled:
             return False
-        if self.summarization_provider == "claude" and self.anthropic_api_key:
+        if self.summarization.provider == "claude" and self.llm.anthropic_api_key:
             return True
-        if self.summarization_provider == "gemini" and self.google_api_key:
+        if self.summarization.provider == "gemini" and self.llm.google_api_key:
             return True
         return False
 

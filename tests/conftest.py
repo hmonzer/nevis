@@ -50,7 +50,7 @@ def localstack_container():
         DockerContainer("localstack/localstack:latest")
         .with_exposed_ports(4566)
         .with_env("SERVICES", "s3")
-        .with_env("DEFAULT_REGION", "us-east-1")
+        .with_env("DEFAULT_REGION", "eu-west-1")
         .with_env("AWS_ACCESS_KEY_ID", "test")
         .with_env("AWS_SECRET_ACCESS_KEY", "test")
     )
@@ -73,12 +73,15 @@ def test_settings_override(async_db_url, s3_endpoint_url):
     """
     Centralized settings override for all test configurations.
     Module-scoped to set up environment once per test module.
+
+    Note: With nested config using env_nested_delimiter="__",
+    nested settings use double underscore (e.g., S3__BUCKET_NAME).
     """
     os.environ["DATABASE_URL"] = async_db_url
-    os.environ["S3_ENDPOINT_URL"] = s3_endpoint_url
-    os.environ["S3_BUCKET_NAME"] = "test-documents"
-    os.environ["AWS_ACCESS_KEY_ID"] = "test"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
+    os.environ["S3__ENDPOINT_URL"] = s3_endpoint_url
+    os.environ["S3__BUCKET_NAME"] = "test-documents"
+    os.environ["AWS__ACCESS_KEY_ID"] = "test"
+    os.environ["AWS__SECRET_ACCESS_KEY"] = "test"
 
     # Clear settings cache to force reload with new env vars
     from src.app.config import get_settings
@@ -337,4 +340,4 @@ def text_splitter(test_container):
 @pytest.fixture
 def tokenizer_model(test_container):
     """Get the tokenizer model name from container config for custom chunking strategies."""
-    return test_container.config().embedding_model_name
+    return test_container.config().embedding.model_name

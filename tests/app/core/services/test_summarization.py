@@ -7,7 +7,7 @@ from src.app.core.services.summarization import (
     ClaudeSummarizationService,
     GeminiSummarizationService,
     SummarizationError,
-    SUMMARIZATION_PROMPT,
+    SUMMARIZATION_PROMPT_TEMPLATE,
 )
 
 
@@ -207,18 +207,21 @@ class TestGeminiSummarizationService:
 class TestSummarizationPrompt:
     """Tests for the summarization prompt template."""
 
-    def test_prompt_contains_max_words(self):
-        """Test that prompt mentions the max word limit."""
-        assert "100" in SUMMARIZATION_PROMPT
+    def test_prompt_has_max_words_placeholder(self):
+        """Test that prompt has a max_words placeholder."""
+        assert "{max_words}" in SUMMARIZATION_PROMPT_TEMPLATE
 
     def test_prompt_has_content_placeholder(self):
         """Test that prompt has a content placeholder."""
-        assert "{content}" in SUMMARIZATION_PROMPT
+        assert "{content}" in SUMMARIZATION_PROMPT_TEMPLATE
 
     def test_prompt_format_works(self):
-        """Test that prompt can be formatted with content."""
+        """Test that prompt can be formatted with content and max_words."""
         content = "Test document content"
-        formatted = SUMMARIZATION_PROMPT.format(content=content)
+        max_words = 100
+        formatted = SUMMARIZATION_PROMPT_TEMPLATE.format(content=content, max_words=max_words)
 
         assert content in formatted
+        assert "100" in formatted
         assert "{content}" not in formatted
+        assert "{max_words}" not in formatted

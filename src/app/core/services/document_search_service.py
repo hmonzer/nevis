@@ -21,7 +21,8 @@ class DocumentSearchService:
     def __init__(
         self,
         chunk_search_service: DocumentChunkSearchService,
-        document_repository: DocumentRepository
+        document_repository: DocumentRepository,
+        chunk_retrieval_multiplier: int = 5,
     ):
         """
         Initialize the document search service.
@@ -29,9 +30,12 @@ class DocumentSearchService:
         Args:
             chunk_search_service: Service for searching document chunks
             document_repository: Repository for retrieving full document records
+            chunk_retrieval_multiplier: Multiplier for top_k to determine how many
+                chunks to fetch per requested document.
         """
         self.chunk_search_service = chunk_search_service
         self.document_repository = document_repository
+        self.chunk_retrieval_multiplier = chunk_retrieval_multiplier
 
     async def search(
         self,
@@ -58,7 +62,7 @@ class DocumentSearchService:
 
         # Search for relevant chunks
         # Fetch more chunks to ensure we get enough documents
-        chunk_limit = request.top_k * 5
+        chunk_limit = request.top_k * self.chunk_retrieval_multiplier
         chunk_search_request = SearchRequest(
             query=request.query,
             top_k=chunk_limit,

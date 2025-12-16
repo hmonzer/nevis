@@ -1,13 +1,51 @@
 """Tests for the chunking service with token-based splitting."""
 
-from src.app.containers import create_text_splitter
+import pytest
+from src.app.containers import create_text_splitter, validate_chunk_size
 from src.app.core.services.chunking import RecursiveChunkingStrategy
 
 
-def test_recursive_chunking_strategy_chunks_text(tokenizer):
+@pytest.fixture
+def embedding_model(test_container):
+    """Get the sentence transformer model from container for validation."""
+    return test_container.sentence_transformer_model()
+
+
+class TestChunkSizeValidation:
+    """Tests for chunk_size vs model max_seq_length validation."""
+
+    def test_validate_chunk_size_within_limit(self, embedding_model):
+        """Test that validation passes when chunk_size is within limit."""
+        # MiniLM has max_seq_length of 256
+        # This should not raise
+        validate_chunk_size(embedding_model, chunk_size=256)
+
+    def test_validate_chunk_size_exceeds_limit_raises_error(self, embedding_model):
+        """Test that validation raises ValueError when chunk_size exceeds limit."""
+        max_seq = embedding_model.max_seq_length
+        with pytest.raises(ValueError) as exc_info:
+            validate_chunk_size(embedding_model, chunk_size=max_seq + 1)
+
+        assert "exceeds embedding model's max_seq_length" in str(exc_info.value)
+        assert str(max_seq) in str(exc_info.value)
+
+    def test_validate_chunk_size_warns_near_limit(self, embedding_model, caplog):
+        """Test that validation warns when chunk_size is close to limit."""
+        import logging
+        max_seq = embedding_model.max_seq_length
+        # Use 95% of max (above 90% threshold)
+        chunk_size = int(max_seq * 0.95)
+
+        with caplog.at_level(logging.WARNING):
+            validate_chunk_size(embedding_model, chunk_size=chunk_size)
+
+        assert "close to embedding model's max_seq_length" in caplog.text
+
+
+def test_recursive_chunking_strategy_chunks_text(tokenizer, embedding_model):
     """Test that text is properly chunked into multiple pieces."""
     # Arrange - 100 tokens, 20 token overlap
-    splitter = create_text_splitter(tokenizer, chunk_size=100, chunk_overlap=20)
+    splitter = create_text_splitter(tokenizer, embedding_model, chunk_size=100, chunk_overlap=20)
     strategy = RecursiveChunkingStrategy(splitter=splitter)
     text = "This is a long sentence that needs to be chunked. " * 20
 
@@ -22,10 +60,10 @@ def test_recursive_chunking_strategy_chunks_text(tokenizer):
         assert len(chunk) > 0
 
 
-def test_recursive_chunking_with_overlap(tokenizer):
+def test_recursive_chunking_with_overlap(tokenizer, embedding_model):
     """Test that consecutive chunks have overlapping content."""
     # Arrange - small chunks to force multiple splits
-    splitter = create_text_splitter(tokenizer, chunk_size=15, chunk_overlap=3)
+    splitter = create_text_splitter(tokenizer, embedding_model, chunk_size=15, chunk_overlap=3)
     strategy = RecursiveChunkingStrategy(splitter=splitter)
     # Create longer text that will definitely exceed 15 tokens
     text = "This is a test text to see how the chunking works. " * 10
@@ -65,10 +103,10 @@ def test_recursive_chunking_whitespace_text(chunking_service):
     assert chunks == []
 
 
-def test_recursive_chunking_small_text(tokenizer):
+def test_recursive_chunking_small_text(tokenizer, embedding_model):
     """Test that text smaller than chunk_size returns single chunk."""
     # Arrange
-    splitter = create_text_splitter(tokenizer, chunk_size=100, chunk_overlap=20)
+    splitter = create_text_splitter(tokenizer, embedding_model, chunk_size=100, chunk_overlap=20)
     strategy = RecursiveChunkingStrategy(splitter=splitter)
     text = "This is a short text."
 
@@ -80,11 +118,11 @@ def test_recursive_chunking_small_text(tokenizer):
     assert chunks[0] == text
 
 
-def test_recursive_chunking_custom_separators(tokenizer):
+def test_recursive_chunking_custom_separators(tokenizer, embedding_model):
     """Test that custom separators are respected."""
     # Arrange
     splitter = create_text_splitter(
-        tokenizer, chunk_size=10, chunk_overlap=2, separators=["|"]
+        tokenizer, embedding_model, chunk_size=10, chunk_overlap=2, separators=["|"]
     )
     strategy = RecursiveChunkingStrategy(splitter=splitter)
     text = "chunk1|chunk2|chunk3"
@@ -100,10 +138,10 @@ def test_recursive_chunking_custom_separators(tokenizer):
         assert len(chunk) > 0
 
 
-def test_recursive_chunking_respects_token_limit(tokenizer):
+def test_recursive_chunking_respects_token_limit(tokenizer, embedding_model):
     """Test that chunks respect the token limit of the embedding model."""
     # Arrange - MiniLM has a 256 token limit, use smaller for test
-    splitter = create_text_splitter(tokenizer, chunk_size=50, chunk_overlap=10)
+    splitter = create_text_splitter(tokenizer, embedding_model, chunk_size=50, chunk_overlap=10)
     strategy = RecursiveChunkingStrategy(splitter=splitter)
     # Generate a long text that will need multiple chunks
     text = "The quick brown fox jumps over the lazy dog. " * 50

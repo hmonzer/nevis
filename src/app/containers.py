@@ -1,4 +1,6 @@
 """Dependency injection container using dependency-injector library."""
+import logging
+
 from dependency_injector import containers, providers
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter, TextSplitter
@@ -6,6 +8,8 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoTokenizer
 
 from src.app.config import Settings
+
+logger = logging.getLogger(__name__)
 from src.shared.database.database import Database, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.database.entity_mapper import EntityMapper
@@ -66,8 +70,45 @@ def create_tokenizer(model_name: str) -> AutoTokenizer:
     return AutoTokenizer.from_pretrained(model_name)
 
 
+def validate_chunk_size(
+    model: SentenceTransformer,
+    chunk_size: int,
+) -> None:
+    """
+    Validate that chunk_size doesn't exceed the embedding model's max sequence length.
+
+    This is a safety check to prevent silent truncation of chunks, which would
+    lead to information loss and degraded search quality.
+
+    Args:
+        model: The SentenceTransformer model to check against
+        chunk_size: The configured chunk size in tokens
+
+    Raises:
+        ValueError: If chunk_size exceeds the model's max_seq_length
+    """
+    max_seq_length = model.max_seq_length
+
+    if chunk_size > max_seq_length:
+        raise ValueError(
+            f"chunking.size ({chunk_size}) exceeds embedding model's "
+            f"max_seq_length ({max_seq_length}). "
+            f"Reduce CHUNKING__SIZE in your configuration to {max_seq_length} or less."
+        )
+
+    # Warn if chunk_size is close to the limit (within 10%)
+    if chunk_size > max_seq_length * 0.9:
+        logger.warning(
+            "chunking.size (%d) is close to embedding model's max_seq_length (%d). "
+            "Consider reducing for a safety margin to avoid edge-case truncation.",
+            chunk_size,
+            max_seq_length,
+        )
+
+
 def create_text_splitter(
     tokenizer: AutoTokenizer,
+    model: SentenceTransformer,
     chunk_size: int,
     chunk_overlap: int,
     separators: list[str] | None = None,
@@ -77,7 +118,12 @@ def create_text_splitter(
 
     Uses the HuggingFace tokenizer to count tokens accurately, ensuring
     chunks are sized by tokens rather than characters.
+
+    Validates that chunk_size doesn't exceed the embedding model's context window.
     """
+    # Validate chunk_size against model's max sequence length
+    validate_chunk_size(model, chunk_size)
+
     return RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         tokenizer,  # type: ignore[arg-type]  # AutoTokenizer is compatible with PreTrainedTokenizerBase
         chunk_size=chunk_size,
@@ -86,7 +132,11 @@ def create_text_splitter(
     )
 
 
-def create_summarization_service(config: Settings) -> SummarizationService | None:
+def create_summarization_service(
+    config: Settings,
+    max_words: int,
+    max_tokens: int,
+) -> SummarizationService | None:
     """
     Factory function to create summarization service based on configuration.
 
@@ -96,19 +146,23 @@ def create_summarization_service(config: Settings) -> SummarizationService | Non
 
     If summarization is disabled or API key is missing, returns None.
     """
-    if not config.summarization_enabled:
+    if not config.summarization.enabled:
         return None
 
-    if config.summarization_provider == "claude" and config.anthropic_api_key:
+    if config.summarization.provider == "claude" and config.llm.anthropic_api_key:
         return ClaudeSummarizationService(
-            api_key=config.anthropic_api_key,
-            model=config.claude_model,
+            api_key=config.llm.anthropic_api_key,
+            model=config.llm.claude_model,
+            max_words=max_words,
+            max_tokens=max_tokens,
         )
 
-    if config.summarization_provider == "gemini" and config.google_api_key:
+    if config.summarization.provider == "gemini" and config.llm.google_api_key:
         return GeminiSummarizationService(
-            api_key=config.google_api_key,
-            model=config.gemini_model,
+            api_key=config.llm.google_api_key,
+            model=config.llm.gemini_model,
+            max_words=max_words,
+            max_tokens=max_tokens,
         )
 
     # No valid configuration - return None (summarization disabled)
@@ -138,13 +192,13 @@ class Container(containers.DeclarativeContainer):
     # =========================================================================
     sentence_transformer_model = providers.Singleton(
         SentenceTransformer,
-        model_name_or_path=config.provided.embedding_model_name,
+        model_name_or_path=config.provided.embedding.model_name,
         device="cpu",
     )
 
     cross_encoder_model = providers.Singleton(
         CrossEncoder,
-        model_name=config.provided.chunk_reranker_model_name,
+        model_name=config.provided.reranker.model_name,
     )
 
     # =========================================================================
@@ -164,7 +218,10 @@ class Container(containers.DeclarativeContainer):
         document_chunk_mapper=document_chunk_mapper,
     )
 
-    rrf = providers.Singleton(ReciprocalRankFusion, k=60)
+    rrf = providers.Singleton(
+        ReciprocalRankFusion,
+        k=config.provided.rrf.k,
+    )
 
     # =========================================================================
     # SINGLETONS - Text Processing (tokenizer and splitter for chunking)
@@ -173,14 +230,15 @@ class Container(containers.DeclarativeContainer):
     # =========================================================================
     tokenizer = providers.Singleton(
         create_tokenizer,
-        model_name=config.provided.embedding_model_name,
+        model_name=config.provided.embedding.model_name,
     )
 
     text_splitter = providers.Singleton(
         create_text_splitter,
         tokenizer=tokenizer,
-        chunk_size=config.provided.chunk_size,
-        chunk_overlap=config.provided.chunk_overlap,
+        model=sentence_transformer_model,
+        chunk_size=config.provided.chunking.size,
+        chunk_overlap=config.provided.chunking.overlap,
     )
 
     chunking_service = providers.Singleton(
@@ -194,6 +252,8 @@ class Container(containers.DeclarativeContainer):
     summarization_service = providers.Singleton(
         create_summarization_service,
         config=config,
+        max_words=config.provided.summarization.max_words,
+        max_tokens=config.provided.summarization.max_tokens,
     )
 
     # =========================================================================
@@ -214,11 +274,11 @@ class Container(containers.DeclarativeContainer):
     # =========================================================================
     s3_storage_settings = providers.Singleton(
         S3BlobStorageSettings,
-        bucket_name=config.provided.s3_bucket_name,
-        endpoint_url=config.provided.s3_endpoint_url,
-        region_name=config.provided.aws_region,
-        aws_access_key_id=config.provided.aws_access_key_id,
-        aws_secret_access_key=config.provided.aws_secret_access_key,
+        bucket_name=config.provided.s3.bucket_name,
+        endpoint_url=config.provided.s3.endpoint_url,
+        region_name=config.provided.aws.region,
+        aws_access_key_id=config.provided.aws.access_key_id,
+        aws_secret_access_key=config.provided.aws.secret_access_key,
     )
 
     s3_storage = providers.Singleton(
@@ -301,6 +361,7 @@ class Container(containers.DeclarativeContainer):
         unit_of_work=unit_of_work,
         blob_storage=s3_storage,
         document_processor=document_processor,
+        s3_key_pattern=config.provided.s3.document_key_pattern,
     )
 
     document_chunk_search_service = providers.Factory(
@@ -309,8 +370,10 @@ class Container(containers.DeclarativeContainer):
         search_repository=chunks_search_repository,
         rrf=rrf,
         reranker_service=reranker_service,
-        reranker_score_threshold=config.provided.chunk_reranker_score_threshold,
-        vector_similarity_threshold=config.provided.chunk_vector_similarity_threshold,
+        reranker_score_threshold=config.provided.reranker.score_threshold,
+        vector_similarity_threshold=config.provided.chunk_search.vector_similarity_threshold,
+        retrieval_multiplier_with_rerank=config.provided.chunk_search.retrieval_multiplier_with_rerank,
+        retrieval_multiplier_no_rerank=config.provided.chunk_search.retrieval_multiplier_no_rerank,
     )
 
     # Variant without reranking (for testing/comparison)
@@ -320,13 +383,16 @@ class Container(containers.DeclarativeContainer):
         search_repository=chunks_search_repository,
         rrf=rrf,
         reranker_service=None,
-        vector_similarity_threshold=config.provided.chunk_vector_similarity_threshold,
+        vector_similarity_threshold=config.provided.chunk_search.vector_similarity_threshold,
+        retrieval_multiplier_with_rerank=config.provided.chunk_search.retrieval_multiplier_with_rerank,
+        retrieval_multiplier_no_rerank=config.provided.chunk_search.retrieval_multiplier_no_rerank,
     )
 
     document_search_service = providers.Factory(
         DocumentSearchService,
         chunk_search_service=document_chunk_search_service,
         document_repository=document_repository,
+        chunk_retrieval_multiplier=config.provided.document_search.chunk_retrieval_multiplier,
     )
 
     # Variant without reranking (for testing/comparison)
@@ -334,12 +400,13 @@ class Container(containers.DeclarativeContainer):
         DocumentSearchService,
         chunk_search_service=document_chunk_search_service_no_rerank,
         document_repository=document_repository,
+        chunk_retrieval_multiplier=config.provided.document_search.chunk_retrieval_multiplier,
     )
 
     client_search_service = providers.Factory(
         ClientSearchService,
         search_repository=client_search_repository,
-        pg_trgm_threshold=config.provided.client_search_trgm_threshold,
+        pg_trgm_threshold=config.provided.client_search.trgm_threshold,
     )
 
     search_service = providers.Factory(
