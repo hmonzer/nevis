@@ -109,12 +109,12 @@ class DocumentService:
 
     async def process_document(self, document_id: UUID, content: str) -> None:
         """
-        Process a document by chunking its content and generating embeddings.
+        Process a document by chunking its content, generating embeddings, and optionally summarizing.
 
         This method:
         1. Retrieves the document from the repository
-        2. Uses DocumentProcessor to chunk and embed the content
-        3. Updates document status to PROCESSED
+        2. Uses DocumentProcessor to chunk, embed, and optionally summarize the content
+        3. Updates document status to PROCESSED and sets the summary if available
         4. Persists all chunks in a single transaction
 
         This will be executed in a background process.
@@ -132,21 +132,26 @@ class DocumentService:
         document = await self.document_repository.get_by_id(document_id)
         if not document:
             logger.error("Document %s not found for processing", document_id)
-            raise EntityNotFound(f"Document with ID {document_id} not found")
+            raise EntityNotFound("Document", document_id)
 
-        # Process text to get chunks with embeddings
-        chunks = await self.document_processor.process_text(document_id, content)
+        # Process text to get chunks with embeddings and optional summary
+        result = await self.document_processor.process_text(document_id, content)
+
+        if result.summary:
+            document.summarized(result.summary)
+
         document.processed()
         # Persist document status update and chunks in a single transaction
         async with self.unit_of_work:
             await self.unit_of_work.update(document)
-            for chunk in chunks:
+            for chunk in result.chunks:
                 self.unit_of_work.add(chunk)
 
         logger.info(
-            "Successfully processed document %s with %d chunks",
+            "Successfully processed document %s with %d chunks%s",
             document_id,
-            len(chunks)
+            len(result.chunks),
+            " and summary" if result.summary else ""
         )
 
 

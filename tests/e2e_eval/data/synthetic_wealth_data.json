@@ -153,6 +153,11 @@
           "query_id": "q_onboarding_04",
           "query_text": "proof of address for John Doe",
           "expected_result_ids": ["doc_doe_utility_bill"]
+        },
+        {
+          "query_id": "q_onboarding_04",
+          "query_text": "proof of address for Micheline",
+          "expected_result_ids": []
         }
       ]
     },

@@ -29,6 +29,7 @@ class DocumentEntity(Base):
         default=DocumentStatus.PENDING,
         nullable=False
     )
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

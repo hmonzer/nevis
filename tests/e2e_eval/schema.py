@@ -1,5 +1,5 @@
-from typing import List, Dict, Optional
-from pydantic import BaseModel, Field
+from typing import List, Optional
+from pydantic import BaseModel
 from src.client.schemas import CreateClientRequest, CreateDocumentRequest
 
 class ClientRecord(CreateClientRequest):

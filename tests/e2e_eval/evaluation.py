@@ -65,7 +65,7 @@ class EvaluationReporter:
         """
         # Print header
         print(f"\n{'='*80}")
-        print(f"EVALUATION SUMMARY")
+        print("EVALUATION SUMMARY")
         print(f"{'='*80}")
         print(f"Suite: {suite_name}")
         print(f"Total Use Cases: {total_use_cases}")
@@ -88,7 +88,7 @@ class EvaluationReporter:
         Args:
             all_results: List of use case results
         """
-        print(f"\n📊 METRICS BY USE CASE")
+        print("\n📊 METRICS BY USE CASE")
         print(f"{'='*80}")
 
         # Calculate column widths
@@ -136,7 +136,7 @@ class EvaluationReporter:
         Args:
             failures: List of (use_case_title, failure_reason) tuples
         """
-        print(f"\n⚠️  FAILED USE CASES")
+        print("\n⚠️  FAILED USE CASES")
         print(f"{'='*80}")
         for title, reason in failures:
             print(f"  • {title}")

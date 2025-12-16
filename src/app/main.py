@@ -1,18 +1,28 @@
+import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from src.shared.database.database import Database, DatabaseSettings
-from src.app.config import get_settings
 from src.app.api.v1 import clients, documents, search
+from src.app.config import get_settings
+from src.app.logging import configure_logging
+from src.shared.database.database import Database, DatabaseSettings
+
+# Configure logging at module load time
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    logger.info("Starting Nevis API...")
     settings = get_settings()
 
     # Initialize database tables on startup
+    logger.info("Initializing database...")
     db_settings = DatabaseSettings(db_url=settings.database_url)
     db = Database(db_settings)
 
@@ -27,10 +37,11 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     await db._engine.dispose()
+    logger.info("Database initialized successfully")
 
     yield
 
-    # Cleanup on shutdown (if needed)
+    logger.info("Shutting down Nevis API...")
 
 
 def create_app() -> FastAPI:

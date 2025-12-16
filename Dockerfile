@@ -29,4 +29,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 EXPOSE 8000
 
+# Disable Python output buffering for real-time logs
+ENV PYTHONUNBUFFERED=1
+
 CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

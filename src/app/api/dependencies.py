@@ -17,6 +17,11 @@ from src.app.core.services.rrf import ReciprocalRankFusion
 from src.app.core.services.document_search_service import DocumentSearchService
 from src.app.core.services.client_search_service import ClientSearchService
 from src.app.core.services.search_service import SearchService
+from src.app.core.services.summarization import (
+    SummarizationService,
+    ClaudeSummarizationService,
+    GeminiSummarizationService,
+)
 from src.shared.database.database import Database, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 from src.shared.database.entity_mapper import EntityMapper
@@ -243,14 +248,48 @@ def get_embedding_service(
     return SentenceTransformerEmbedding(model)
 
 
+def get_summarization_service() -> SummarizationService | None:
+    """
+    Get summarization service based on configuration.
+
+    Returns the appropriate LLM-based summarization service if:
+    1. Summarization is enabled in settings
+    2. The required API key is available
+
+    If summarization is disabled or API key is missing, returns None.
+    This allows document processing to continue without summarization.
+    """
+    settings = get_settings()
+
+    if not settings.summarization_enabled:
+        return None
+
+    if settings.summarization_provider == "claude" and settings.anthropic_api_key:
+        return ClaudeSummarizationService(
+            api_key=settings.anthropic_api_key,
+            model=settings.claude_model,
+        )
+
+    if settings.summarization_provider == "gemini" and settings.google_api_key:
+        return GeminiSummarizationService(
+            api_key=settings.google_api_key,
+            model=settings.gemini_model,
+        )
+
+    # No valid configuration - return None (summarization disabled)
+    return None
+
+
 def get_document_processor(
     chunking_service: RecursiveChunkingStrategy = Depends(get_chunking_service),
     embedding_service: SentenceTransformerEmbedding = Depends(get_embedding_service),
+    summarization_service: SummarizationService | None = Depends(get_summarization_service),
 ) -> DocumentProcessor:
-    """Get Document processor instance."""
+    """Get Document processor instance with optional summarization."""
     return DocumentProcessor(
         chunking_strategy=chunking_service,
         embedding_service=embedding_service,
+        summarization_service=summarization_service,
     )
 
 

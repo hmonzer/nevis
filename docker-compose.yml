@@ -3,13 +3,18 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
+      # These override .env values for Docker-specific config
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/nevis
       - S3_ENDPOINT_URL=http://localstack:4566
       - S3_BUCKET_NAME=nevis-documents
-      - AWS_REGION=us-east-1
+      - AWS_REGION=eu-west-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      # Disable Python output buffering for real-time logs
+      - PYTHONUNBUFFERED=1
     depends_on:
       db:
         condition: service_healthy

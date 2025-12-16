@@ -3,11 +3,15 @@ from uuid import uuid4
 
 import pytest
 from sentence_transformers import SentenceTransformer
-from src.app.core.services.document_processor import DocumentProcessor
+from src.app.core.services.document_processor import DocumentProcessor, ProcessingResult
 from src.app.core.services.embedding import SentenceTransformerEmbedding
-
+from src.app.core.services.summarization import SummarizationService
 from src.app.core.services.chunking import RecursiveChunkingStrategy
 
+
+# =============================================================================
+# Fixtures
+# =============================================================================
 
 @pytest.fixture
 def chunking_service():
@@ -15,9 +19,9 @@ def chunking_service():
     return RecursiveChunkingStrategy(chunk_size=100, chunk_overlap=20)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def sentence_transformer_model():
-    """Create a SentenceTransformer model instance."""
+    """Create a SentenceTransformer model instance (expensive, module-scoped)."""
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 
@@ -29,11 +33,46 @@ def embedding_service(sentence_transformer_model):
 
 @pytest.fixture
 def document_processor(chunking_service, embedding_service):
-    """Create a document processor."""
+    """Create a document processor without summarization."""
     return DocumentProcessor(
         chunking_strategy=chunking_service,
         embedding_service=embedding_service,
     )
+
+
+class MockSummarizationService(SummarizationService):
+    """Mock summarization service for testing."""
+
+    def __init__(self, summary_text: str = "Mock summary for testing."):
+        self.summary_text = summary_text
+        self.call_count = 0
+
+    async def summarize(self, content: str) -> str:
+        self.call_count += 1
+        return self.summary_text
+
+
+@pytest.fixture
+def mock_summarization_service():
+    """Create a mock summarization service."""
+    return MockSummarizationService(
+        summary_text="This document discusses programming concepts and weather patterns."
+    )
+
+
+@pytest.fixture
+def document_processor_with_summary(chunking_service, embedding_service, mock_summarization_service):
+    """Create a document processor with summarization service."""
+    return DocumentProcessor(
+        chunking_strategy=chunking_service,
+        embedding_service=embedding_service,
+        summarization_service=mock_summarization_service,
+    )
+
+
+# =============================================================================
+# Tests
+# =============================================================================
 
 
 @pytest.mark.asyncio
@@ -49,12 +88,15 @@ async def test_process_text_creates_chunks_with_embeddings(document_processor):
     """
 
     # Act - Process the text
-    chunks = await document_processor.process_text(document_id, content)
+    result = await document_processor.process_text(document_id, content)
+
+    # Assert - Verify result is ProcessingResult
+    assert isinstance(result, ProcessingResult)
 
     # Assert - Verify chunks were created
-    assert len(chunks) > 0
+    assert len(result.chunks) > 0
 
-    for chunk in chunks:
+    for chunk in result.chunks:
         assert chunk.document_id == document_id
         assert chunk.chunk_content is not None
         assert len(chunk.chunk_content) > 0
@@ -72,14 +114,14 @@ async def test_process_text_chunks_ordered_by_index(document_processor):
     content = "A" * 500  # Long content to create multiple chunks
 
     # Act
-    chunks = await document_processor.process_text(document_id, content)
+    result = await document_processor.process_text(document_id, content)
 
     # Assert
-    assert len(chunks) > 1
+    assert len(result.chunks) > 1
 
     # Verify indices are sequential starting from 0
-    indices = sorted([chunk.chunk_index for chunk in chunks])
-    assert indices == list(range(len(chunks)))
+    indices = sorted([chunk.chunk_index for chunk in result.chunks])
+    assert indices == list(range(len(result.chunks)))
 
 
 @pytest.mark.asyncio
@@ -89,10 +131,11 @@ async def test_process_text_empty_content(document_processor):
     document_id = uuid4()
 
     # Act
-    chunks = await document_processor.process_text(document_id, "")
+    result = await document_processor.process_text(document_id, "")
 
     # Assert - No chunks should be created
-    assert len(chunks) == 0
+    assert len(result.chunks) == 0
+    assert result.summary is None
 
 
 @pytest.mark.asyncio
@@ -113,14 +156,59 @@ async def test_process_text_embeddings_are_different_for_different_chunks(docume
     """
 
     # Act
-    chunks = await document_processor.process_text(document_id, content)
+    result = await document_processor.process_text(document_id, content)
 
     # Assert
-    assert len(chunks) >= 2
+    assert len(result.chunks) >= 2
 
     # Get embeddings for first two chunks
-    emb1 = np.array(chunks[0].embedding)
-    emb2 = np.array(chunks[1].embedding)
+    emb1 = np.array(result.chunks[0].embedding)
+    emb2 = np.array(result.chunks[1].embedding)
 
     # They should not be identical
     assert not np.allclose(emb1, emb2)
+
+
+@pytest.mark.asyncio
+async def test_process_text_with_summarization_service(
+    document_processor_with_summary,
+    mock_summarization_service,
+):
+    """Test that process_text generates summary when summarization service is provided."""
+    # Arrange
+    document_id = uuid4()
+    content = """
+    This is a test document about financial planning.
+    It covers investment strategies and retirement goals.
+    The document should be summarized for wealth management purposes.
+    """
+
+    # Act
+    result = await document_processor_with_summary.process_text(document_id, content)
+
+    # Assert - Verify result structure
+    assert isinstance(result, ProcessingResult)
+    assert len(result.chunks) > 0
+
+    # Assert - Verify summary was generated
+    assert result.summary is not None
+    assert result.summary == mock_summarization_service.summary_text
+
+    # Assert - Verify summarization service was called exactly once
+    assert mock_summarization_service.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_text_without_summarization_returns_none_summary(document_processor):
+    """Test that process_text returns None summary when no summarization service."""
+    # Arrange
+    document_id = uuid4()
+    content = "This is a test document."
+
+    # Act
+    result = await document_processor.process_text(document_id, content)
+
+    # Assert
+    assert isinstance(result, ProcessingResult)
+    assert result.summary is None
+    assert len(result.chunks) > 0

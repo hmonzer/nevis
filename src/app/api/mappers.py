@@ -45,6 +45,7 @@ def to_document_response(document: Document) -> DocumentResponse:
         title=document.title,
         s3_key=document.s3_key,
         status=DocumentStatusEnum(document.status.value),
+        summary=document.summary,
         created_at=document.created_at,
     )
 

@@ -1,5 +1,4 @@
 import pytest
-import pytest_asyncio
 from pathlib import Path
 from typing import Any
 from ranx import Qrels, Run, evaluate
@@ -197,7 +196,7 @@ async def test_wealth_manager_eval(
 
     # 2. Setup entire corpus once (all clients and documents)
     print(f"\n{'='*60}")
-    print(f"Setting up corpus...")
+    print("Setting up corpus...")
     print(f"{'='*60}")
     id_map = await setup_corpus(suite, nevis_client, document_repository)
     # Create reverse map for logging (UUID -> synthetic ID)

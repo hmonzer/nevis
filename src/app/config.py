@@ -1,5 +1,9 @@
+import logging
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -30,11 +34,33 @@ class Settings(BaseSettings):
     chunk_size: int = 300
     chunk_overlap: int = 50
 
+    # Summarization Settings
+    summarization_enabled: bool = True  # Enable/disable summarization feature
+    summarization_provider: str = "claude"  # Options: "claude", "gemini"
+    anthropic_api_key: str | None = None  # Anthropic API key for Claude
+    google_api_key: str | None = None  # Google API key for Gemini
+    claude_model: str = "claude-sonnet-4-20250514"  # Claude model for summarization
+    gemini_model: str = "models/gemini-flash-latest"  # Gemini model for summarization
+
     model_config = SettingsConfigDict(
+        # pydantic-settings reads from environment variables first, then .env file
+        # In Docker, env vars are injected by docker-compose from .env file
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore",
     )
+
+    @property
+    def summarization_available(self) -> bool:
+        """Check if summarization is enabled and has required API key."""
+        if not self.summarization_enabled:
+            return False
+        if self.summarization_provider == "claude" and self.anthropic_api_key:
+            return True
+        if self.summarization_provider == "gemini" and self.google_api_key:
+            return True
+        return False
 
 
 @lru_cache()
