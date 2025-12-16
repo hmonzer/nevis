@@ -179,7 +179,7 @@
         {
           "query_id": "q_ips_03",
           "query_text": "ESG focus conservative growth",
-          "expected_result_ids": ["doc_smith_ips_2023"]
+          "expected_result_ids": ["client_smith_family", "doc_smith_ips_2023"]
         }
       ]
     },

@@ -9,7 +9,7 @@ class EvaluationMetrics(BaseModel):
     mrr: float = Field(..., ge=0.0, le=1.0, description="Mean Reciprocal Rank")
     recall_at_5: float = Field(..., ge=0.0, le=1.0, description="Recall at 5 results")
     ndcg_at_5: float = Field(..., ge=0.0, le=1.0, description="Normalized Discounted Cumulative Gain at 5")
-    precision_at_5: float = Field(0.0, ge=0.0, le=1.0, description="Precision at 5 results (default 0.0)")
+    precision: float = Field(0.0, ge=0.0, le=1.0, description="Precision of results. High (1) when no junk responses")
 
     @classmethod
     def from_ranx_result(cls, metrics: Any) -> "EvaluationMetrics":
@@ -26,12 +26,12 @@ class EvaluationMetrics(BaseModel):
             mrr=metrics["mrr"],  # type: ignore
             recall_at_5=metrics["recall@5"],  # type: ignore
             ndcg_at_5=metrics["ndcg@5"],  # type: ignore
-            precision_at_5=metrics["precision@5"]
+            precision=metrics["precision"]
         )
 
     def __str__(self) -> str:
         """Format metrics for display."""
-        return f"MRR: {self.mrr:.4f}, Recall@5: {self.recall_at_5:.4f}, NDCG@5: {self.ndcg_at_5:.4f}, Precision@5: {self.precision_at_5:.4f}"
+        return f"MRR: {self.mrr:.4f}, Recall@5: {self.recall_at_5:.4f}, NDCG@5: {self.ndcg_at_5:.4f}, Precision@5: {self.precision:.4f}"
 
 
 class UseCaseResult(BaseModel):
@@ -99,7 +99,7 @@ class EvaluationReporter:
         max_name_width = min(max_name_width, 40)  # Cap at 40 chars
 
         # Print table header
-        header = f"{'Use Case':<{max_name_width}} | {'MRR':>8} | {'Recall@5':>10} | {'NDCG@5':>8} | {'Precision@5':>8}"
+        header = f"{'Use Case':<{max_name_width}} | {'MRR':>8} | {'Recall@5':>10} | {'NDCG@5':>8} | {'Precision':>8}"
         print(header)
         print("-" * len(header))
 
@@ -117,7 +117,7 @@ class EvaluationReporter:
                 f"{result.metrics.mrr:>8.4f} | "
                 f"{result.metrics.recall_at_5:>10.4f} | "
                 f"{result.metrics.ndcg_at_5:>8.4f} | "
-                f"{result.metrics.precision_at_5:>8.4f}"
+                f"{result.metrics.precision:>8.4f}"
             )
 
         # Print separator before average
@@ -127,7 +127,7 @@ class EvaluationReporter:
         avg_mrr = sum(r.metrics.mrr for r in all_results) / len(all_results)
         avg_recall = sum(r.metrics.recall_at_5 for r in all_results) / len(all_results)
         avg_ndcg = sum(r.metrics.ndcg_at_5 for r in all_results) / len(all_results)
-        avg_precision = sum(r.metrics.precision_at_5 for r in all_results) / len(all_results)
+        avg_precision = sum(r.metrics.precision for r in all_results) / len(all_results)
 
         print(f"{'AVERAGE':<{max_name_width}} | {avg_mrr:>8.4f} | {avg_recall:>10.4f} | {avg_ndcg:>8.4f} | {avg_precision:>8.4f}")
         print("=" * len(header))

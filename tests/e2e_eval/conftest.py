@@ -15,4 +15,4 @@ def document_search_repository(test_container):
 @pytest_asyncio.fixture
 def unified_search_service(test_container):
     """Get unified search service WITHOUT reranking for e2e evaluation."""
-    return test_container.search_service_no_rerank()
+    return test_container.search_service()

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from pathlib import Path
 from typing import Any
@@ -65,6 +67,7 @@ def log_query_results_compact(
     expected_ids: list[str],
     results: list[Any],
     reverse_map: dict[str, str],
+    top_k: int = 5,
 ) -> None:
     """
     Log compact comparison of expected vs retrieved results.
@@ -74,26 +77,48 @@ def log_query_results_compact(
         expected_ids: List of expected synthetic IDs
         results: List of SearchResult objects
         reverse_map: Mapping from UUID to synthetic ID
+        top_k: Number of top results to consider for precision (default 5)
     """
-    # Build retrieved synthetic IDs
-    retrieved_ids = []
+    # Build retrieved synthetic IDs with scores for debugging
+    retrieved_with_info = []
     for result in results:
         entity_uuid = str(result.entity.id)
         synthetic_id = reverse_map.get(entity_uuid, f"UNKNOWN_{entity_uuid[:8]}")
-        retrieved_ids.append(synthetic_id)
+        retrieved_with_info.append((synthetic_id, result.score, result.type))
+
+    retrieved_ids = [r[0] for r in retrieved_with_info]
 
     # Show comparison
     expected_set = set(expected_ids)
-    retrieved_set = set(retrieved_ids)
-    missing = expected_set - retrieved_set
+    retrieved_set = set(retrieved_ids[:top_k])  # Only consider top_k for precision
+    all_retrieved_set = set(retrieved_ids)
+
+    missing = expected_set - all_retrieved_set  # Expected but not retrieved at all
+    extra = retrieved_set - expected_set  # Retrieved in top_k but not expected (hurts precision)
     correct = expected_set & retrieved_set
 
-    # Only log if there are issues
-    if missing:
+    # Only log if there are issues (missing OR extra docs)
+    if missing or extra:
+        # Format retrieved IDs with scores
+        retrieved_with_scores = [f"{syn_id}({score:.3f})" for syn_id, score, _ in retrieved_with_info[:top_k]]
+
         print(f"    ⚠️  Query: '{query_text[:60]}'")
         print(f"        Expected: {', '.join(expected_ids)}")
-        print(f"        Retrieved: {', '.join(retrieved_ids[:5])}{'...' if len(retrieved_ids) > 5 else ''}")
-        print(f"        ✅ Correct: {len(correct)}/{len(expected_set)} | ❌ Missing: {', '.join(missing)}")
+        print(f"        Retrieved (top {top_k}): {', '.join(retrieved_with_scores)}")
+        print(f"        ✅ Correct: {len(correct)}/{len(expected_set)}", end="")
+
+        if missing:
+            print(f" | ❌ Missing: {', '.join(missing)}", end="")
+
+        if extra:
+            # Show extra docs with their scores and types for debugging
+            extra_details = []
+            for syn_id, score, result_type in retrieved_with_info[:top_k]:
+                if syn_id in extra:
+                    extra_details.append(f"{syn_id}({result_type}:{score:.3f})")
+            print(f" | 🔴 Extra (hurts precision): {', '.join(extra_details)}", end="")
+
+        print()  # Newline at the end
 
 
 async def run_eval_use_case(
@@ -137,8 +162,8 @@ async def run_eval_use_case(
         print(f"  Query '{test.query_text[:50]}...': {len(results)} total results "
               f"({num_clients} clients, {num_documents} documents)")
 
-        # Log details for queries with issues
-        log_query_results_compact(test.query_text, test.expected_result_ids, results, reverse_map)
+        # Log details for queries with issues (missing or extra docs)
+        log_query_results_compact(test.query_text, test.expected_result_ids, results, reverse_map, top_k)
 
         # Build system output scores
         run_dict[test.query_id] = build_run_dict_entry(results)
@@ -151,7 +176,7 @@ async def run_eval_use_case(
     qrels = Qrels(qrels_dict)
     run = Run(run_dict)  # type: ignore
 
-    ranx_metrics = evaluate(qrels, run, metrics=["mrr", "recall@5", "ndcg@5", "precision@5"])  # type: ignore
+    ranx_metrics = evaluate(qrels, run, metrics=["mrr", "recall@5", "ndcg@5", "precision"])  # type: ignore
 
     # Convert to our metrics model
     metrics = EvaluationMetrics.from_ranx_result(ranx_metrics)
@@ -160,7 +185,7 @@ async def run_eval_use_case(
     print(f"  MRR:       {metrics.mrr:.4f}")
     print(f"  Recall@5:  {metrics.recall_at_5:.4f}")
     print(f"  NDCG@5:    {metrics.ndcg_at_5:.4f}")
-    print(f"  Precision@5:    {metrics.precision_at_5:.4f}")
+    print(f"  Precision:    {metrics.precision:.4f}")
 
     return UseCaseResult(
         use_case_title=use_case.title,
@@ -170,7 +195,7 @@ async def run_eval_use_case(
 
 
 @pytest.mark.asyncio
-async def test_wealth_manager_eval(
+async def test_wealth_manager_eval(caplog,
     nevis_client,  # Used for data setup via API
     unified_search_service,  # Unified search service to evaluate
     document_repository,  # Repository for efficient batch document status checking
@@ -187,6 +212,7 @@ async def test_wealth_manager_eval(
     4. Compares search results against expected results using IR metrics
     5. Collects metrics across all use cases for aggregate assessment
     """
+    caplog.set_level(logging.CRITICAL)
     # 1. Load the Evaluation Suite
     data_path = Path(__file__).parent / "data" / "synthetic_wealth_data.json"
     suite = load_eval_suite(data_path)
@@ -215,7 +241,7 @@ async def test_wealth_manager_eval(
                 id_map=id_map,
                 reverse_map=reverse_map,
                 search_service=unified_search_service,
-                top_k=10,
+                top_k=5,
             )
 
             if result:
