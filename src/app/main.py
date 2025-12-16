@@ -1,5 +1,7 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Callable
 
 from fastapi import FastAPI
 from sqlalchemy import text
@@ -13,11 +15,15 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
+# Type alias for lifespan context manager
+LifespanType = Callable[[FastAPI], AsyncIterator[None]]
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
+async def default_lifespan(app: FastAPI):
+    """Default application lifespan manager - initializes database on startup."""
     container: Container = app.state.container
+    logger.info("Starting Nevis API...")
 
     # Initialize database tables on startup
     db = container.database()
@@ -32,20 +38,34 @@ async def lifespan(app: FastAPI):
         from src.shared.database.database import Base
         await conn.run_sync(Base.metadata.create_all)
 
-    await db._engine.dispose()
     logger.info("Database initialized successfully")
 
     yield
 
     logger.info("Shutting down Nevis API...")
-    # Cleanup on shutdown
     await db._engine.dispose()
 
 
-def create_app() -> FastAPI:
-    """Create and configure FastAPI application."""
-    # Initialize the DI container
-    container = Container()
+@asynccontextmanager
+async def test_lifespan(app: FastAPI):
+    """Test lifespan manager - database is managed by test fixtures."""
+    yield
+
+
+def create_app(
+    container: Container,
+    lifespan: LifespanType | None = None,
+) -> FastAPI:
+    """
+    Create and configure FastAPI application.
+
+    Args:
+        container: Optional DI container. If not provided, creates a new one.
+        lifespan: Optional lifespan context manager. If not provided, uses default_lifespan.
+
+    Returns:
+        Configured FastAPI application.
+    """
     container.wire(modules=[
         "src.app.api.v1.clients",
         "src.app.api.v1.documents",
@@ -57,7 +77,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=config.app_name,
         version=config.app_version,
-        lifespan=lifespan
+        lifespan=lifespan or default_lifespan,
     )
 
     # Attach container to app state for access in lifespan and routes
@@ -78,5 +98,5 @@ def create_app() -> FastAPI:
 
     return app
 
-
-app = create_app()
+container = Container()
+app = create_app(container=container)
