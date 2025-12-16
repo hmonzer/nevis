@@ -28,7 +28,8 @@ class DocumentChunkSearchService:
         embedding_service: EmbeddingService,
         search_repository: ChunksRepositorySearch,
         rrf: ReciprocalRankFusion,
-        reranker_service: Optional[RerankerService] = None
+        reranker_service: Optional[RerankerService] = None,
+        reranker_score_threshold: float = 0.0
     ):
         """
         Initialize the document search service.
@@ -38,11 +39,16 @@ class DocumentChunkSearchService:
             search_repository: Repository for vector and keyword search
             rrf: Reciprocal Rank Fusion instance for combining search results
             reranker_service: Optional service for reranking results
+            reranker_score_threshold: Minimum score threshold for reranked results.
+                Cross-encoder models output logits in range ~[-12, +12].
+                Results with scores below this threshold are filtered out.
+                Only applied when reranker_service is provided.
         """
         self.embedding_service = embedding_service
         self.search_repository = search_repository
         self.rrf = rrf
         self.reranker_service = reranker_service
+        self.reranker_score_threshold = reranker_score_threshold
 
     async def search(
         self,
@@ -113,6 +119,22 @@ class DocumentChunkSearchService:
             # No reranker - just return top_k from fused results
             results = fused_results[:request.top_k]
 
-        logger.info("Hybrid search complete. Returning %d results", len(results))
+        # Apply score threshold filtering only when reranking was performed
+        # Cross-encoder scores are logits (~-12 to +12), not probabilities
+        if self.reranker_service:
+            results = await self._filter_non_relevant_results(results)
 
+        logger.info("Hybrid search complete. Returning %d results", len(results))
+        return results
+
+    async def _filter_non_relevant_results(self, results):
+        pre_filter_count = len(results)
+        results = [r for r in results if r.score >= self.reranker_score_threshold]
+        if pre_filter_count != len(results):
+            logger.info(
+                "Filtered %d results below reranker threshold %.2f (kept %d)",
+                pre_filter_count - len(results),
+                self.reranker_score_threshold,
+                len(results)
+            )
         return results

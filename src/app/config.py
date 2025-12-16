@@ -22,13 +22,21 @@ class Settings(BaseSettings):
 
     # ML Model Settings
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # For production: BAAI/bge-reranker-v2-m3
+    chunk_reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # For production: BAAI/bge-reranker-v2-m3
+    # Reranker Settings
+    # Cross-encoder models output logits in range ~[-12, +12]
+    # Positive scores indicate relevance, negative scores indicate irrelevance
+    # A threshold of 0.0 filters out clearly irrelevant results
+    # Use -2.0 to -3.0 for more permissive filtering (includes borderline results)
+    chunk_reranker_score_threshold: float = 0.0
 
     # Search Settings
     search_default_top_k: int = 3
     search_default_threshold: float = 0.5
     search_max_top_k: int = 100
     client_search_default_threshold: float = 0.1
+
+
 
     # Chunking Settings (token-based, using embedding model's tokenizer)
     chunk_size: int = 256  # Maximum tokens per chunk
