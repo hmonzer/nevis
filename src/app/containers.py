@@ -309,6 +309,7 @@ class Container(containers.DeclarativeContainer):
         search_repository=chunks_search_repository,
         rrf=rrf,
         reranker_service=reranker_service,
+        reranker_score_threshold=config.provided.reranker_score_threshold,
     )
 
     # Variant without reranking (for testing/comparison)
