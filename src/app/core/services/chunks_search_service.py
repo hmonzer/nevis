@@ -31,6 +31,8 @@ class DocumentChunkSearchService:
         reranker_service: Optional[RerankerService] = None,
         reranker_score_threshold: float = 0.0,
         vector_similarity_threshold: float = 0.3,
+        retrieval_multiplier_with_rerank: int = 3,
+        retrieval_multiplier_no_rerank: int = 2,
     ):
         """
         Initialize the document search service.
@@ -46,6 +48,8 @@ class DocumentChunkSearchService:
                 Only applied when reranker_service is provided.
             vector_similarity_threshold: Minimum cosine similarity threshold for
                 vector search results. Range [-1, 1]. Configured via settings.
+            retrieval_multiplier_with_rerank: Multiplier for top_k when reranking is enabled.
+            retrieval_multiplier_no_rerank: Multiplier for top_k when reranking is disabled.
         """
         self.embedding_service = embedding_service
         self.search_repository = search_repository
@@ -53,6 +57,8 @@ class DocumentChunkSearchService:
         self.reranker_service = reranker_service
         self.reranker_score_threshold = reranker_score_threshold
         self.vector_similarity_threshold = vector_similarity_threshold
+        self.retrieval_multiplier_with_rerank = retrieval_multiplier_with_rerank
+        self.retrieval_multiplier_no_rerank = retrieval_multiplier_no_rerank
 
     async def search(
         self,
@@ -79,7 +85,8 @@ class DocumentChunkSearchService:
         logger.info("Hybrid search for query: '%s' (top_k=%d)", request.query[:100], request.top_k)
 
         # Fetch more candidates for fusion and potential reranking
-        retrieval_limit = request.top_k * 3 if self.reranker_service else request.top_k * 2
+        multiplier = self.retrieval_multiplier_with_rerank if self.reranker_service else self.retrieval_multiplier_no_rerank
+        retrieval_limit = request.top_k * multiplier
 
         # Run vector search and keyword search in parallel
         embedding_task = self.embedding_service.embed_query(request.query)

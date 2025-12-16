@@ -7,9 +7,8 @@ import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
-MAX_SUMMARY_WORDS = 100
-SUMMARIZATION_PROMPT = f"""You are assisting a wealth manager who needs quick document summaries.
-Summarize the following document in {MAX_SUMMARY_WORDS} words or fewer.
+SUMMARIZATION_PROMPT_TEMPLATE = """You are assisting a wealth manager who needs quick document summaries.
+Summarize the following document in {max_words} words or fewer.
 
 Focus on information relevant to wealth management:
 - Financial details (amounts, accounts, investments)
@@ -21,7 +20,7 @@ Focus on information relevant to wealth management:
 If the document is not financial in nature, provide a general summary of the key points.
 
 Document:
-{{content}}
+{content}
 
 Summary:"""
 
@@ -38,7 +37,7 @@ class SummarizationService(ABC):
             content: The full document text to summarize.
 
         Returns:
-            A summary of the document content (max 100 words).
+            A summary of the document content.
 
         Raises:
             SummarizationError: If summarization fails.
@@ -54,13 +53,15 @@ class SummarizationError(Exception):
 class ClaudeSummarizationService(SummarizationService):
     """Summarization service using Anthropic's Claude API."""
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, max_words: int = 100, max_tokens: int = 200):
         """
         Initialize the Claude summarization service.
 
         Args:
             api_key: Anthropic API key.
             model: Claude model to use for summarization.
+            max_words: Target maximum words for the summary.
+            max_tokens: Maximum tokens for the LLM response.
 
         Raises:
             ValueError: If model is not provided.
@@ -69,14 +70,16 @@ class ClaudeSummarizationService(SummarizationService):
             raise ValueError("Claude model must be specified")
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self.model = model
+        self.max_words = max_words
+        self.max_tokens = max_tokens
 
     async def summarize(self, content: str) -> str:
         """Generate a summary using Claude."""
         try:
-            prompt = SUMMARIZATION_PROMPT.format(content=content)
+            prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(content=content, max_words=self.max_words)
             message = await self.client.messages.create(
                 model=self.model,
-                max_tokens=200,
+                max_tokens=self.max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
             summary = message.content[0].text.strip()
@@ -90,13 +93,15 @@ class ClaudeSummarizationService(SummarizationService):
 class GeminiSummarizationService(SummarizationService):
     """Summarization service using Google's Gemini API."""
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, max_words: int = 100, max_tokens: int = 200):
         """
         Initialize the Gemini summarization service.
 
         Args:
             api_key: Google API key.
             model: Gemini model to use for summarization.
+            max_words: Target maximum words for the summary.
+            max_tokens: Maximum tokens for the LLM response (not used by Gemini but kept for consistency).
 
         Raises:
             ValueError: If model is not provided.
@@ -105,11 +110,13 @@ class GeminiSummarizationService(SummarizationService):
             raise ValueError("Gemini model must be specified")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model)
+        self.max_words = max_words
+        self.max_tokens = max_tokens
 
     async def summarize(self, content: str) -> str:
         """Generate a summary using Gemini."""
         try:
-            prompt = SUMMARIZATION_PROMPT.format(content=content)
+            prompt = SUMMARIZATION_PROMPT_TEMPLATE.format(content=content, max_words=self.max_words)
             response = await self.model.generate_content_async(prompt)
             summary = response.text.strip()
             logger.info("Generated summary with Gemini (%d chars)", len(summary))
