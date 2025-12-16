@@ -26,11 +26,8 @@ However, this comes with a **tradeoff on semantic accuracy**. Larger models (e.g
 3. Register it in the dependency injection container (`src/app/containers.py`)
 
 Similarly, the `RerankerService` interface can be extended for more powerful reranking models.
-
 > In case the model generates different embedding dimensions and contet window, some additional changes are required such as modifying the chunking strategy and vector column in the DB
 
-
-## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
@@ -419,8 +416,6 @@ Estate Planning & Trusts          |   0.6667 |     1.0000 |   0.7540
 Tax & Reporting                   |   0.6667 |     0.6667 |   0.6667
 --------------------------------------------------------------------
 AVERAGE                           |   0.7833 |     0.8167 |   0.7921
-====================================================================
-```
 **Test Data:**
 
 The evaluation uses `tests/e2e_eval/data/synthetic_wealth_data.json` containing:
