@@ -1,5 +1,9 @@
+import logging
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -35,13 +39,16 @@ class Settings(BaseSettings):
     summarization_provider: str = "claude"  # Options: "claude", "gemini"
     anthropic_api_key: str | None = None  # Anthropic API key for Claude
     google_api_key: str | None = None  # Google API key for Gemini
-    claude_model: str = "claude-3-haiku-20240307"  # Claude model for summarization
-    gemini_model: str = "gemini-1.5-flash"  # Gemini model for summarization
+    claude_model: str = "claude-sonnet-4-20250514"  # Claude model for summarization
+    gemini_model: str = "models/gemini-flash-latest"  # Gemini model for summarization
 
     model_config = SettingsConfigDict(
+        # pydantic-settings reads from environment variables first, then .env file
+        # In Docker, env vars are injected by docker-compose from .env file
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore",
     )
 
     @property
