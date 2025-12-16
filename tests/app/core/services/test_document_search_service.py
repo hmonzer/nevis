@@ -317,8 +317,8 @@ async def test_search_no_results(document_search_service, mock_chunk_search_serv
 
 
 @pytest.mark.asyncio
-async def test_search_with_custom_threshold(document_search_service, mock_chunk_search_service, mock_document_repository):
-    """Test search with custom similarity threshold."""
+async def test_search_passes_request_to_chunk_service(document_search_service, mock_chunk_search_service, mock_document_repository):
+    """Test that search passes SearchRequest to chunk search service."""
     # Arrange
     doc_id = uuid4()
     document = Document(
@@ -340,18 +340,17 @@ async def test_search_with_custom_threshold(document_search_service, mock_chunk_
     mock_document_repository.get_by_ids.return_value = [document]
 
     # Act
-    request = SearchRequest(query="compliance requirements", top_k=5, threshold=0.7)
+    request = SearchRequest(query="compliance requirements", top_k=5)
     results = await document_search_service.search(request)
 
     # Assert
     assert len(results) == 1
-    # Verify custom threshold was passed to chunk search via SearchRequest
+    # Verify SearchRequest was passed to chunk search
     mock_chunk_search_service.search.assert_called_once()
     call_args = mock_chunk_search_service.search.call_args[0][0]
     assert isinstance(call_args, SearchRequest)
     assert call_args.query == "compliance requirements"
     assert call_args.top_k == 25  # top_k * 5
-    assert call_args.threshold == 0.7
 
 
 @pytest.mark.asyncio

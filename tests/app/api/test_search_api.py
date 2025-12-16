@@ -132,15 +132,3 @@ async def test_search_top_k_validation(test_app):
         assert response.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_search_threshold_validation(test_app):
-    """Test search validates threshold parameter."""
-    transport = ASGITransport(app=test_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # threshold < -1.0 should fail validation
-        response = await client.get("/api/v1/search/", params={"q": "test", "threshold": -1.5})
-        assert response.status_code == 422
-
-        # threshold > 1.0 should fail validation
-        response = await client.get("/api/v1/search/", params={"q": "test", "threshold": 1.5})
-        assert response.status_code == 422

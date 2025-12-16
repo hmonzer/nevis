@@ -62,7 +62,6 @@ class DocumentSearchService:
         chunk_search_request = SearchRequest(
             query=request.query,
             top_k=chunk_limit,
-            threshold=request.threshold
         )
         chunk_results = await self.chunk_search_service.search(chunk_search_request)
 

@@ -405,17 +405,20 @@ The evaluation suite measures three key Information Retrieval metrics:
 **Current Performance Benchmarks:**
 
 ```
+
 📊 METRICS BY USE CASE
 ================================================================================
-Use Case                          |      MRR |   Recall@5 |   NDCG@5
---------------------------------------------------------------------
-Onboarding & KYC Retrieval        |   0.7500 |     0.7500 |   0.7500
-Investment Policy & Compliance    |   0.8333 |     1.0000 |   0.8770
-Client Interactions & Life Events |   0.4444 |     0.6667 |   0.5000
-Estate Planning & Trusts          |   0.6667 |     1.0000 |   0.7540
-Tax & Reporting                   |   0.6667 |     0.6667 |   0.6667
---------------------------------------------------------------------
-AVERAGE                           |   0.7833 |     0.8167 |   0.7921
+Use Case                          |      MRR |   Recall@5 |   NDCG@5 | Precision
+--------------------------------------------------------------------------------
+Onboarding & KYC Retrieval        |   0.7500 |     0.7500 |   0.7500 |   0.7500
+Investment Policy & Compliance    |   1.0000 |     1.0000 |   0.9532 |   1.0000
+Client Interactions & Life Events |   1.0000 |     1.0000 |   0.9532 |   1.0000
+Estate Planning & Trusts          |   1.0000 |     1.0000 |   1.0000 |   1.0000
+Tax & Reporting                   |   1.0000 |     1.0000 |   1.0000 |   1.0000
+--------------------------------------------------------------------------------
+AVERAGE                           |   0.9500 |     0.9500 |   0.9313 |   0.9500
+================================================================================
+```
 **Test Data:**
 
 The evaluation uses `tests/e2e_eval/data/synthetic_wealth_data.json` containing:

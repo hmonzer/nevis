@@ -150,7 +150,6 @@ class NevisClient:
         self,
         query: str,
         top_k: int = 10,
-        threshold: float = 0.5,
     ) -> list[SearchResultResponse]:
         """
         Search across clients and documents.
@@ -158,7 +157,6 @@ class NevisClient:
         Args:
             query: Search query string
             top_k: Maximum number of results to return (default: 10)
-            threshold: Minimum similarity threshold (default: 0.5)
 
         Returns:
             List of search results containing matched clients and documents
@@ -168,7 +166,7 @@ class NevisClient:
         """
         response: Response = await self.client.get(
             "/api/v1/search/",
-            params={"q": query, "top_k": top_k, "threshold": threshold},
+            params={"q": query, "top_k": top_k},
         )
         response.raise_for_status()
         return [SearchResultResponse(**result) for result in response.json()]

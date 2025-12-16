@@ -310,6 +310,7 @@ class Container(containers.DeclarativeContainer):
         rrf=rrf,
         reranker_service=reranker_service,
         reranker_score_threshold=config.provided.chunk_reranker_score_threshold,
+        vector_similarity_threshold=config.provided.chunk_vector_similarity_threshold,
     )
 
     # Variant without reranking (for testing/comparison)
@@ -319,6 +320,7 @@ class Container(containers.DeclarativeContainer):
         search_repository=chunks_search_repository,
         rrf=rrf,
         reranker_service=None,
+        vector_similarity_threshold=config.provided.chunk_vector_similarity_threshold,
     )
 
     document_search_service = providers.Factory(
@@ -337,6 +339,7 @@ class Container(containers.DeclarativeContainer):
     client_search_service = providers.Factory(
         ClientSearchService,
         search_repository=client_search_repository,
+        pg_trgm_threshold=config.provided.client_search_trgm_threshold,
     )
 
     search_service = providers.Factory(

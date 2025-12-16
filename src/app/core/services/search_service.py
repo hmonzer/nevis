@@ -52,10 +52,9 @@ class SearchService:
             List of SearchResult objects sorted by score descending, limited to top_k
         """
         logger.info(
-            "Unified search for query: '%s' (top_k=%d, threshold=%.2f)",
+            "Unified search for query: '%s' (top_k=%d)",
             request.query[:100],
             request.top_k,
-            request.threshold,
         )
 
         # Execute searches in parallel for better performance

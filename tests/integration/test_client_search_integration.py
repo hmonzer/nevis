@@ -32,8 +32,8 @@ async def unit_of_work(clean_database):
 
 @pytest_asyncio.fixture
 async def client_search_service(client_search_repository):
-    """Create a client search service."""
-    return ClientSearchService(client_search_repository)
+    """Create a client search service with default threshold."""
+    return ClientSearchService(client_search_repository, pg_trgm_threshold=0.1)
 
 
 @pytest_asyncio.fixture
@@ -101,7 +101,7 @@ async def wealth_management_clients(unit_of_work):
 async def test_search_investment_banker(client_search_service, wealth_management_clients):
     """Test searching for investment banking professionals."""
     # Act
-    request = SearchRequest(query="investment banker", top_k=5, threshold=0.1)
+    request = SearchRequest(query="investment banker", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Jonathan Sterling should rank highest
@@ -122,7 +122,7 @@ async def test_search_investment_banker(client_search_service, wealth_management
 async def test_search_wealth_management(client_search_service, wealth_management_clients):
     """Test searching for wealth management professionals."""
     # Act
-    request = SearchRequest(query="wealth management", top_k=5, threshold=0.1)
+    request = SearchRequest(query="wealth management", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Elizabeth Chen should rank highest
@@ -137,7 +137,7 @@ async def test_search_wealth_management(client_search_service, wealth_management
 async def test_search_real_estate(client_search_service, wealth_management_clients):
     """Test searching for real estate professionals."""
     # Act
-    request = SearchRequest(query="real estate", top_k=5, threshold=0.1)
+    request = SearchRequest(query="real estate", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Robert Patterson should rank highest
@@ -152,7 +152,7 @@ async def test_search_real_estate(client_search_service, wealth_management_clien
 async def test_search_technology_sector(client_search_service, wealth_management_clients):
     """Test searching for technology sector professionals."""
     # Act
-    request = SearchRequest(query="technology", top_k=5, threshold=0.1)
+    request = SearchRequest(query="technology", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Michael Torres (tech executive) should rank highest
@@ -170,7 +170,7 @@ async def test_search_technology_sector(client_search_service, wealth_management
 async def test_search_portfolio_manager(client_search_service, wealth_management_clients):
     """Test searching for portfolio management professionals."""
     # Act
-    request = SearchRequest(query="portfolio manager", top_k=5, threshold=0.1)
+    request = SearchRequest(query="portfolio manager", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Sarah Goldman should rank highest
@@ -185,7 +185,7 @@ async def test_search_portfolio_manager(client_search_service, wealth_management
 async def test_search_by_company_domain(client_search_service, wealth_management_clients):
     """Test searching by company email domain."""
     # Act - Search for Morgan Stanley
-    request = SearchRequest(query="morganstanley", top_k=5, threshold=0.1)
+    request = SearchRequest(query="morganstanley", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Elizabeth Chen should be found (morganstanley.com email)
@@ -210,26 +210,16 @@ async def test_search_by_first_name(client_search_service, wealth_management_cli
 
 
 @pytest.mark.asyncio
-async def test_search_with_high_threshold(client_search_service, wealth_management_clients):
-    """Test that high threshold returns only close matches."""
-    # Act - Search with high threshold (strict matching)
-    request_strict = SearchRequest(query="investment banker", top_k=10, threshold=0.4)
-    results_strict = await client_search_service.search(request_strict)
+async def test_search_respects_configured_threshold(client_search_service, wealth_management_clients):
+    """Test that service returns results meeting the configured threshold (0.1)."""
+    # Act - Search for investment banker (service uses threshold=0.1 from fixture)
+    request = SearchRequest(query="investment banker", top_k=10)
+    results = await client_search_service.search(request)
 
-    # Search with low threshold (loose matching)
-    request_loose = SearchRequest(query="investment banker", top_k=10, threshold=0.1)
-    results_loose = await client_search_service.search(request_loose)
-
-    # Assert - Loose threshold should return more or equal results
-    assert len(results_loose) >= len(results_strict)
-
-    # All strict results should have high scores
-    for result in results_strict:
-        assert result.score >= 0.4
-
-    # All loose results should have lower minimum score
-    for result in results_loose:
-        assert result.score >= 0.1
+    # Assert - All results should have scores >= configured threshold (0.1)
+    assert len(results) > 0
+    for result in results:
+        assert result.score >= 0.1, f"Score {result.score} should be >= configured threshold 0.1"
 
 
 @pytest.mark.asyncio
@@ -266,7 +256,7 @@ async def test_search_no_matches(client_search_service, wealth_management_client
 async def test_search_multi_keyword_query(client_search_service, wealth_management_clients):
     """Test searching with multiple keywords."""
     # Act - Search for "hedge fund portfolio"
-    request = SearchRequest(query="hedge fund portfolio", top_k=5, threshold=0.1)
+    request = SearchRequest(query="hedge fund portfolio", top_k=5)
     results = await client_search_service.search(request)
 
     # Assert - Sarah Goldman (hedge fund portfolio manager) should rank highest

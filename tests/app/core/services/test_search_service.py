@@ -453,7 +453,7 @@ class TestSearchServiceSearchRequestParameters:
         mock_client_search_service.search.return_value = []
         mock_document_search_service.search.return_value = []
 
-        request = SearchRequest(query="test query", top_k=5, threshold=0.7)
+        request = SearchRequest(query="test query", top_k=5)
 
         # Act
         await search_service.search(request)
