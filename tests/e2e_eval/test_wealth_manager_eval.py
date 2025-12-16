@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Any
 from ranx import Qrels, Run, evaluate
 
-from src.app.core.domain.models import SearchRequest
-from src.app.core.services.search_service import SearchService
+from src.client import NevisClient
 
 from tests.e2e_eval.data_setup import load_eval_suite, setup_corpus
 from tests.e2e_eval.evaluation import EvaluationMetrics, UseCaseResult, EvaluationReporter
@@ -125,7 +124,7 @@ async def run_eval_use_case(
     use_case: Any,
     id_map: dict[str, Any],
     reverse_map: dict[str, str],
-    search_service: SearchService,
+    nevis_client: NevisClient,
     top_k: int = 10,
 ) -> UseCaseResult | None:
     """
@@ -135,7 +134,7 @@ async def run_eval_use_case(
         use_case: Use case containing tests
         id_map: Mapping from synthetic IDs to actual database IDs
         reverse_map: Mapping from UUIDs to synthetic IDs (for logging)
-        search_service: Unified search service to evaluate
+        nevis_client: API client for search requests
         top_k: Number of results to retrieve
 
     Returns:
@@ -149,24 +148,49 @@ async def run_eval_use_case(
     qrels_dict: dict[str, dict[str, int]] = {}
     run_dict: dict[str, dict[str, float]] = {}
 
-    for test in use_case.tests:
-        # Build ground truth relevance judgments
-        qrels_dict[test.query_id] = build_qrels_dict(test, id_map)
+    # Track negative test cases (queries expecting 0 results) as they skew metrics even when response matches expected
+    negative_tests_passed = 0
+    negative_tests_failed = 0
 
-        # Execute search using unified search service
-        request = SearchRequest(query=test.query_text, top_k=top_k)
-        results = await search_service.search(request)
+    for test in use_case.tests:
+        results = await nevis_client.search(query=test.query_text, top_k=top_k)
 
         num_clients = sum(1 for r in results if r.type == 'CLIENT')
         num_documents = sum(1 for r in results if r.type == 'DOCUMENT')
         print(f"  Query '{test.query_text[:50]}...': {len(results)} total results "
               f"({num_clients} clients, {num_documents} documents)")
 
+        # Handle negative test cases (queries expecting 0 results)
+        if not test.expected_result_ids:
+            if len(results) == 0:
+                # Correct: expected nothing, got nothing - skip from IR metrics
+                negative_tests_passed += 1
+                print(f"    ✅ Negative test passed: correctly returned 0 results")
+                continue
+            else:
+                # Incorrect: expected nothing but got results - penalize in IR metrics
+                # Create a fake "expected" document that won't match any result
+                # This causes all metrics to be 0 for this query (MRR=0, Recall=0, etc.)
+                negative_tests_failed += 1
+                retrieved_ids = [reverse_map.get(str(r.entity.id), "UNKNOWN") for r in results[:5]]
+                print(f"    ❌ Negative test failed: expected 0 results, got {len(results)}: {retrieved_ids}")
+                qrels_dict[test.query_id] = {"__nonexistent_doc__": 1}
+                run_dict[test.query_id] = build_run_dict_entry(results)
+                continue
+
+        # Normal case: build ground truth relevance judgments
+        qrels_dict[test.query_id] = build_qrels_dict(test, id_map)
+
         # Log details for queries with issues (missing or extra docs)
         log_query_results_compact(test.query_text, test.expected_result_ids, results, reverse_map, top_k)
 
         # Build system output scores
         run_dict[test.query_id] = build_run_dict_entry(results)
+
+    # Log negative test summary
+    total_negative = negative_tests_passed + negative_tests_failed
+    if total_negative > 0:
+        print(f"\n  📋 Negative tests: {negative_tests_passed}/{total_negative} passed")
 
     # Evaluate using Ranx
     if not qrels_dict or not run_dict:
@@ -176,39 +200,35 @@ async def run_eval_use_case(
     qrels = Qrels(qrels_dict)
     run = Run(run_dict)  # type: ignore
 
-    ranx_metrics = evaluate(qrels, run, metrics=["mrr", "recall@5", "ndcg@5", "precision"])  # type: ignore
+    ranx_metrics = evaluate(qrels, run, EvaluationMetrics.metrics)  # type: ignore
 
     # Convert to our metrics model
     metrics = EvaluationMetrics.from_ranx_result(ranx_metrics)
 
     print(f"\n📊 Metrics for {use_case.title}:")
-    print(f"  MRR:       {metrics.mrr:.4f}")
-    print(f"  Recall@5:  {metrics.recall_at_5:.4f}")
-    print(f"  NDCG@5:    {metrics.ndcg_at_5:.4f}")
-    print(f"  Precision:    {metrics.precision:.4f}")
+    print(metrics)
 
+    # num_queries counts only queries included in IR evaluation
+    # (excludes passed negative tests which are correctly skipped)
     return UseCaseResult(
         use_case_title=use_case.title,
         metrics=metrics,
-        num_queries=len(use_case.tests),
+        num_queries=len(qrels_dict),
     )
 
 
 @pytest.mark.asyncio
 async def test_wealth_manager_eval(caplog,
-    nevis_client,  # Used for data setup via API
-    unified_search_service,  # Unified search service to evaluate
-    document_repository,  # Repository for efficient batch document status checking
-    clean_database,  # Ensures fresh DB
-    s3_storage  # Ensures S3
+    nevis_client,  # Used for data setup and search via API
+    document_repository  # Repository for efficient batch document status checking
 ):
     """
-    E2E evaluation of unified search service using synthetic wealth management data.
+    E2E evaluation of search API using synthetic wealth management data.
 
     This test:
     1. Loads an evaluation suite with a unified corpus
     2. Ingests all corpus data once (clients and documents)
-    3. For each use case, runs queries and evaluates results
+    3. For each use case, runs queries via the search API endpoint
     4. Compares search results against expected results using IR metrics
     5. Collects metrics across all use cases for aggregate assessment
     """
@@ -240,7 +260,7 @@ async def test_wealth_manager_eval(caplog,
                 use_case=use_case,
                 id_map=id_map,
                 reverse_map=reverse_map,
-                search_service=unified_search_service,
+                nevis_client=nevis_client,
                 top_k=5,
             )
 

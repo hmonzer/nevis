@@ -11,13 +11,12 @@ import pytest
 import pytest_asyncio
 from dependency_injector import providers
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 from testcontainers.postgres import PostgresContainer
 
 from src.app.containers import Container
-from src.app.main import create_app
+from src.app.main import create_app, default_lifespan
 from src.client import NevisClient
 from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
 from src.shared.database.database import Database, Base, DatabaseSettings
@@ -25,17 +24,17 @@ from src.shared.database.unit_of_work import UnitOfWork
 
 
 # =============================================================================
-# Module-scoped infrastructure fixtures (expensive to create)
+# Session-scoped infrastructure fixtures (expensive to create, shared across all tests)
 # =============================================================================
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def postgres_container():
-    """Start a PostgreSQL container with pgvector for testing. Module-scoped for reuse."""
+    """Start a PostgreSQL container with pgvector for testing. Session-scoped for reuse."""
     with PostgresContainer("pgvector/pgvector:pg16") as postgres:
         yield postgres
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def async_db_url(postgres_container):
     """Get the async database URL from the postgres container."""
     connection_url = postgres_container.get_connection_url()
@@ -43,9 +42,9 @@ def async_db_url(postgres_container):
     return async_url
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def localstack_container():
-    """Start a LocalStack container for testing S3. Module-scoped for reuse."""
+    """Start a LocalStack container for testing S3. Session-scoped for reuse."""
     container = (
         DockerContainer("localstack/localstack:latest")
         .with_exposed_ports(4566)
@@ -60,7 +59,7 @@ def localstack_container():
         yield container
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def s3_endpoint_url(localstack_container):
     """Get the S3 endpoint URL from LocalStack container."""
     host = localstack_container.get_container_host_ip()
@@ -68,11 +67,11 @@ def s3_endpoint_url(localstack_container):
     return f"http://{host}:{port}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def test_settings_override(async_db_url, s3_endpoint_url):
     """
     Centralized settings override for all test configurations.
-    Module-scoped to set up environment once per test module.
+    Session-scoped to set up environment once for all tests.
 
     Note: With nested config using env_nested_delimiter="__",
     nested settings use double underscore (e.g., S3__BUCKET_NAME).
@@ -93,7 +92,7 @@ def test_settings_override(async_db_url, s3_endpoint_url):
 
 
 # =============================================================================
-# Module-scoped database fixture
+# Session-scoped database fixture
 # =============================================================================
 
 async def wait_till_db_ready(db: Database, max_attempts: int = 20):
@@ -107,21 +106,16 @@ async def wait_till_db_ready(db: Database, max_attempts: int = 20):
     raise Exception(f"Database not ready after {max_attempts} attempts")
 
 
-@pytest_asyncio.fixture(scope="module")
-async def module_db(async_db_url):
+@pytest_asyncio.fixture(scope="session")
+async def session_db(async_db_url):
     """
-    Module-scoped database instance.
-    Creates tables once per module - much faster than per-test.
+    Session-scoped database instance.
+    Only waits for database readiness - extensions and tables are created
+    by the app lifespan in test_app fixture.
     """
     db_settings = DatabaseSettings(db_url=async_db_url)
     db = Database(db_settings)
     await wait_till_db_ready(db)
-
-    # Create tables once for the module
-    async with db._engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        await conn.run_sync(Base.metadata.create_all)
 
     yield db
 
@@ -129,19 +123,19 @@ async def module_db(async_db_url):
 
 
 # =============================================================================
-# Module-scoped container and app fixtures
+# Session-scoped container and app fixtures
 # =============================================================================
 
-@pytest.fixture(scope="module")
-def test_container(test_settings_override, module_db):
+@pytest.fixture(scope="session")
+def test_container(test_settings_override, session_db):
     """
-    Module-scoped test container with database override.
-    Reuses expensive ML model singletons across tests in the module.
+    Session-scoped test container with database override.
+    Reuses expensive ML model singletons across all tests.
     """
     container = Container()
 
     # Override the database singleton with the test database instance
-    container.database.override(providers.Object(module_db))
+    container.database.override(providers.Object(session_db))
 
     yield container
 
@@ -149,14 +143,17 @@ def test_container(test_settings_override, module_db):
     container.unwire()
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="session")
 async def test_app(test_container):
     """
-    Module-scoped test application using create_app() from src/app/main.py.
-    Uses test_lifespan which skips database initialization (handled by fixtures).
+    Session-scoped test application using create_app() from src/app/main.py.
+    Explicitly invokes lifespan to initialize database extensions, tables, and ML models.
     """
     app = create_app(container=test_container)
-    yield app
+
+    # Explicitly invoke lifespan to create extensions, tables, and load ML models
+    async with default_lifespan(app):
+        yield app
 
 
 # =============================================================================
@@ -164,16 +161,19 @@ async def test_app(test_container):
 # =============================================================================
 
 @pytest_asyncio.fixture(scope="function")
-async def clean_database(module_db):
+async def clean_database(session_db, test_app):
     """
-    Clean the database before each test by truncating all tables.
-    Much faster than dropping/recreating tables.
+    Clean the database before each test by dropping and recreating all tables.
+    Depends on test_app to ensure extensions are created first via app lifespan.
     """
-    async with module_db._engine.begin() as conn:
+    # test_app dependency ensures lifespan has run (extensions + initial tables created)
+    _ = test_app
+
+    async with session_db._engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-    yield module_db
+    yield session_db
 
 
 @pytest_asyncio.fixture
@@ -287,6 +287,12 @@ def client_service(test_container):
 def embedding_service(test_container):
     """Get embedding service from container."""
     return test_container.embedding_service()
+
+
+@pytest.fixture
+def reranker_service(test_container):
+    """Get reranker service from container."""
+    return test_container.reranker_service()
 
 
 @pytest.fixture

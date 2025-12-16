@@ -1,20 +1,9 @@
-"""Tests for embedding service."""
+"""Tests for embedding service.
+
+Uses session-scoped embedding_service fixture from conftest.py to avoid
+reloading the ML model for each test.
+"""
 import pytest
-from sentence_transformers import SentenceTransformer
-
-from src.app.core.services.embedding import SentenceTransformerEmbedding
-
-
-@pytest.fixture
-def sentence_transformer_model():
-    """Create a SentenceTransformer model instance."""
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-
-@pytest.fixture
-def embedding_service(sentence_transformer_model):
-    """Create an embedding service instance with injected model."""
-    return SentenceTransformerEmbedding(sentence_transformer_model)
 
 
 @pytest.mark.asyncio

@@ -10,9 +10,3 @@ import pytest_asyncio
 def document_search_repository(test_container):
     """Alias for chunks_search_repository (used in e2e eval tests)."""
     return test_container.chunks_search_repository()
-
-
-@pytest_asyncio.fixture
-def unified_search_service(test_container):
-    """Get unified search service WITHOUT reranking for e2e evaluation."""
-    return test_container.search_service()

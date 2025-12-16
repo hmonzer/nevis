@@ -1,5 +1,5 @@
 """Evaluation models and reporting for search evaluation."""
-from typing import Any
+from typing import Any, ClassVar
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +10,9 @@ class EvaluationMetrics(BaseModel):
     recall_at_5: float = Field(..., ge=0.0, le=1.0, description="Recall at 5 results")
     ndcg_at_5: float = Field(..., ge=0.0, le=1.0, description="Normalized Discounted Cumulative Gain at 5")
     precision: float = Field(0.0, ge=0.0, le=1.0, description="Precision of results. High (1) when no junk responses")
+
+    # Metric names for ranx.evaluate() - must be ClassVar to avoid Pydantic treating it as a field
+    metrics: ClassVar[list[str]] = ["mrr", "recall@5", "ndcg@5", "precision"]
 
     @classmethod
     def from_ranx_result(cls, metrics: Any) -> "EvaluationMetrics":
