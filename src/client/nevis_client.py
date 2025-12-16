@@ -8,6 +8,7 @@ from src.client.schemas import (
     ClientResponse,
     CreateDocumentRequest,
     DocumentResponse,
+    SearchResultResponse,
 )
 
 
@@ -144,3 +145,30 @@ class NevisClient:
         )
         response.raise_for_status()
         return [DocumentResponse(**doc) for doc in response.json()]
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        threshold: float = 0.5,
+    ) -> list[SearchResultResponse]:
+        """
+        Search across clients and documents.
+
+        Args:
+            query: Search query string
+            top_k: Maximum number of results to return (default: 10)
+            threshold: Minimum similarity threshold (default: 0.5)
+
+        Returns:
+            List of search results containing matched clients and documents
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        response: Response = await self.client.get(
+            "/api/v1/search/",
+            params={"q": query, "top_k": top_k, "threshold": threshold},
+        )
+        response.raise_for_status()
+        return [SearchResultResponse(**result) for result in response.json()]

@@ -2,9 +2,10 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal, Union
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class Client(BaseModel):
@@ -95,5 +96,39 @@ class DocumentSearchResult(BaseModel):
     """
     document: Document = Field(..., description="The document that matched the search")
     score: float = Field(..., description="Relevance score (higher is more relevant). Highest score from matching chunks.")
+
+    model_config = {"from_attributes": True}
+
+
+class SearchRequest(BaseModel):
+    """
+    Request model for search operations across all search services.
+
+    Provides centralized validation for common search parameters.
+    """
+    query: str = Field(..., min_length=1, description="Search query string")
+    top_k: int = Field(default=10, gt=0, le=100, description="Maximum number of results to return")
+    threshold: float = Field(default=0.5, ge=-1.0, le=1.0, description="Minimum similarity threshold for results")
+
+    @field_validator("query")
+    @classmethod
+    def validate_query_not_blank(cls, v: str) -> str:
+        """Ensure query is not just whitespace."""
+        if not v.strip():
+            raise ValueError("Search query cannot be empty or whitespace only")
+        return v.strip()
+
+
+class SearchResult(BaseModel):
+    """
+    Unified search result that can contain either a Client or Document.
+
+    Used by the unified SearchService to return heterogeneous search results
+    with consistent ranking and scoring.
+    """
+    type: Literal["CLIENT", "DOCUMENT"] = Field(..., description="Type of entity in the result")
+    entity: Union[Client, Document] = Field(..., description="The actual entity (Client or Document)")
+    score: float = Field(..., description="Relevance score from the search")
+    rank: int = Field(..., ge=1, description="Rank position in the result set (1-based)")
 
     model_config = {"from_attributes": True}
