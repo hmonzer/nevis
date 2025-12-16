@@ -53,40 +53,28 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
         if len(query_vector) != 384:
             raise ValueError(f"Query vector must be 384-dimensional, got {len(query_vector)}")
 
-        # Build the query using cosine distance
-        # Note: cosine distance = 1 - cosine similarity
-        # So we convert: similarity = 1 - distance
+        # Compute similarity as 1 - cosine_distance
+        similarity = (1 - DocumentChunkEntity.embedding.cosine_distance(query_vector)).label("similarity")
+
+        # Build query with threshold filter in SQL for efficiency
         query = (
-            select(
-                DocumentChunkEntity,
-                (1 - DocumentChunkEntity.embedding.cosine_distance(query_vector)).label("similarity")
+            select(DocumentChunkEntity, similarity)
+            .where(DocumentChunkEntity.embedding.isnot(None))
+        )
+
+        if similarity_threshold is not None:
+            query = query.where(
+                (1 - DocumentChunkEntity.embedding.cosine_distance(query_vector)) >= similarity_threshold
             )
-            .where(DocumentChunkEntity.embedding.isnot(None))  # Only search chunks with embeddings
-            .order_by(DocumentChunkEntity.embedding.cosine_distance(query_vector))  # Closest first
+
+        query = (
+            query
+            .order_by(DocumentChunkEntity.embedding.cosine_distance(query_vector))
             .limit(limit)
         )
 
-        # Execute query
-        async with self.db.session_maker() as session:
-            result = await session.execute(query)
-            rows = result.all()
-
-        # Convert to ChunkSearchResult objects
-        search_results = []
-        for entity, similarity_score in rows:
-            # Apply threshold filter if specified
-            if similarity_threshold is not None and similarity_score < similarity_threshold:
-                continue
-
-            chunk = self.mapper.to_model(entity)
-            search_results.append(
-                ChunkSearchResult(
-                    chunk=chunk,
-                    score=float(similarity_score)
-                )
-            )
-
-        return search_results
+        results = await self._search_with_scores(query)
+        return [ChunkSearchResult(chunk=chunk, score=score) for chunk, score in results]
 
     async def search_by_keyword(
         self,
@@ -114,18 +102,7 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
         if not query_text or not query_text.strip():
             raise ValueError("Query text cannot be empty")
 
-        # Split query into words and clean each word
-        # Remove special characters that could break ts_query syntax
-        words = query_text.strip().split()
-        cleaned_words = []
-        for word in words:
-            # Keep only alphanumeric characters
-            cleaned = re.sub(r'[^\w]', '', word)
-            if cleaned:
-                cleaned_words.append(cleaned)
-
-        if not cleaned_words:
-            raise ValueError("Query text must contain at least one valid word")
+        cleaned_words = await self._generate_words_for_querying(query_text)
 
         # Build OR-based query: word1 | word2 | word3
         # This matches documents containing ANY of the search terms
@@ -144,20 +121,18 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
             .limit(limit)
         )
 
-        # Execute query
-        async with self.db.session_maker() as session:
-            result = await session.execute(query)
-            rows = result.all()
+        results = await self._search_with_scores(query)
+        return [ChunkSearchResult(chunk=chunk, score=score) for chunk, score in results]
 
-        # Convert to ChunkSearchResult objects
-        search_results = []
-        for entity, rank_score in rows:
-            chunk = self.mapper.to_model(entity)
-            search_results.append(
-                ChunkSearchResult(
-                    chunk=chunk,
-                    score=float(rank_score)
-                )
-            )
-
-        return search_results
+    @staticmethod
+    async def _generate_words_for_querying(query_text):
+        # Split query into words and clean each word
+        # Remove special characters that could break ts_query syntax
+        words = query_text.strip().split()
+        cleaned_words = [
+            cleaned for word in words
+            if (cleaned := re.sub(r'[^\w]', '', word))
+        ]
+        if not cleaned_words:
+            raise ValueError("Query text must contain at least one valid word")
+        return cleaned_words

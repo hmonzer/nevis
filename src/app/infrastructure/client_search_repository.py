@@ -66,12 +66,9 @@ class ClientSearchRepository(BaseRepository[ClientEntity, Client]):
             description_similarity
         ).label("max_similarity")
 
-        # Build query with similarity filtering and ordering
+        # Build query with similarity filtering (threshold applied in SQL) and ordering
         stmt = (
-            select(
-                ClientEntity,
-                max_similarity
-            )
+            select(ClientEntity, max_similarity)
             .where(
                 or_(
                     email_similarity > threshold,
@@ -83,22 +80,8 @@ class ClientSearchRepository(BaseRepository[ClientEntity, Client]):
             .order_by(max_similarity.desc())
         )
 
-        # Apply limit if specified
         if limit is not None:
             stmt = stmt.limit(limit)
 
-        # Execute query
-        async with self.db.session_maker() as session:
-            result = await session.execute(stmt)
-            rows = result.all()
-
-        # Convert to ClientSearchResult objects
-        search_results = [
-            ClientSearchResult(
-                client=self.mapper.to_model(entity),
-                score=float(similarity_score)
-            )
-            for entity, similarity_score in rows
-        ]
-
-        return search_results
+        results = await self._search_with_scores(stmt)
+        return [ClientSearchResult(client=client, score=score) for client, score in results]
