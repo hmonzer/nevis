@@ -6,17 +6,17 @@ import pytest
 import pytest_asyncio
 from dependency_injector import providers
 from httpx import ASGITransport, AsyncClient
-from testcontainers.postgres import PostgresContainer
+from sqlalchemy import text
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
-from sqlalchemy import text
+from testcontainers.postgres import PostgresContainer
 
 from src.app.containers import Container
-from src.app.main import create_app, test_lifespan
+from src.app.main import create_app
 from src.client import NevisClient
+from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
 from src.shared.database.database import Database, Base, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
-from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
 
 
 # =============================================================================
@@ -144,7 +144,7 @@ def test_container(test_settings_override, module_db):
 @pytest_asyncio.fixture(scope="module")
 async def test_app(test_container):
     """
-    Module-scoped test application using create_app() from main.py.
+    Module-scoped test application using create_app() from src/app/main.py.
     Uses test_lifespan which skips database initialization (handled by fixtures).
     """
     app = create_app(container=test_container)

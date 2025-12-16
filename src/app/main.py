@@ -45,17 +45,7 @@ async def default_lifespan(app: FastAPI):
     logger.info("Shutting down Nevis API...")
     await db._engine.dispose()
 
-
-@asynccontextmanager
-async def test_lifespan(app: FastAPI):
-    """Test lifespan manager - database is managed by test fixtures."""
-    yield
-
-
-def create_app(
-    container: Container,
-    lifespan: LifespanType | None = None,
-) -> FastAPI:
+def create_app(container: Container) -> FastAPI:
     """
     Create and configure FastAPI application.
 
@@ -77,7 +67,7 @@ def create_app(
     app = FastAPI(
         title=config.app_name,
         version=config.app_version,
-        lifespan=lifespan or default_lifespan,
+        lifespan=default_lifespan,
     )
 
     # Attach container to app state for access in lifespan and routes
