@@ -1,6 +1,5 @@
 """Service for searching documents using semantic vector search aggregated from chunks."""
 import logging
-from collections import defaultdict
 from uuid import UUID
 
 from src.app.core.domain.models import DocumentSearchResult, SearchRequest

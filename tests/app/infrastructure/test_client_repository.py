@@ -1,5 +1,4 @@
 from uuid import uuid4
-from datetime import datetime, UTC
 
 import pytest
 import pytest_asyncio

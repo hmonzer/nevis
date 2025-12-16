@@ -2,7 +2,7 @@
 import re
 from typing import Optional
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 
 from src.app.core.domain.models import ChunkSearchResult, DocumentChunk
 from src.shared.database.base_repo import BaseRepository

@@ -34,6 +34,7 @@ class Document(BaseModel):
     title: str = Field(..., min_length=1, description="Document title")
     s3_key: str = Field(..., description="S3 path to the stored document")
     status: DocumentStatus = Field(default=DocumentStatus.PENDING, description="Processing status")
+    summary: str | None = Field(default=None, description="AI-generated summary of the document")
     created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
 
     model_config = {"from_attributes": True}
@@ -43,6 +44,10 @@ class Document(BaseModel):
 
     def failed(self) -> None:
         self.status = DocumentStatus.FAILED
+
+    def summarized(self, summary: str) -> None:
+        """Set the document summary."""
+        self.summary = summary if summary else None
 
 
 class DocumentChunk(BaseModel):

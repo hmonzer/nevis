@@ -5,7 +5,7 @@ from httpx import AsyncClient, ASGITransport
 
 from src.app.main import create_app
 from src.client import NevisClient, CreateClientRequest
-from src.client.schemas import SearchResultTypeEnum, CreateDocumentRequest
+from src.client.schemas import SearchResultTypeEnum
 
 
 @pytest_asyncio.fixture(scope="module")

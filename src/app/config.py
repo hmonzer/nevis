@@ -30,11 +30,30 @@ class Settings(BaseSettings):
     chunk_size: int = 300
     chunk_overlap: int = 50
 
+    # Summarization Settings
+    summarization_enabled: bool = True  # Enable/disable summarization feature
+    summarization_provider: str = "claude"  # Options: "claude", "gemini"
+    anthropic_api_key: str | None = None  # Anthropic API key for Claude
+    google_api_key: str | None = None  # Google API key for Gemini
+    claude_model: str = "claude-3-haiku-20240307"  # Claude model for summarization
+    gemini_model: str = "gemini-1.5-flash"  # Gemini model for summarization
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False
     )
+
+    @property
+    def summarization_available(self) -> bool:
+        """Check if summarization is enabled and has required API key."""
+        if not self.summarization_enabled:
+            return False
+        if self.summarization_provider == "claude" and self.anthropic_api_key:
+            return True
+        if self.summarization_provider == "gemini" and self.google_api_key:
+            return True
+        return False
 
 
 @lru_cache()

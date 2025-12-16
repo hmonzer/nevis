@@ -15,6 +15,7 @@ class DocumentMapper(BaseEntityMapper[Document, DocumentEntity]):
             title=model_instance.title,
             s3_key=model_instance.s3_key,
             status=EntityDocumentStatus(model_instance.status.value),
+            summary=model_instance.summary,
             created_at=model_instance.created_at,
         )
 
@@ -27,5 +28,6 @@ class DocumentMapper(BaseEntityMapper[Document, DocumentEntity]):
             title=entity.title,
             s3_key=entity.s3_key,
             status=DocumentStatus(entity.status.value),
+            summary=entity.summary,
             created_at=entity.created_at,
         )

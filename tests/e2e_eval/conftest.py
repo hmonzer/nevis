@@ -1,5 +1,4 @@
 """Shared fixtures for e2e evaluation tests."""
-import pytest
 import pytest_asyncio
 from sentence_transformers import SentenceTransformer, CrossEncoder
 

@@ -70,6 +70,7 @@ class DocumentResponse(BaseModel):
     title: str
     s3_key: str
     status: DocumentStatusEnum
+    summary: str | None = Field(default=None, description="AI-generated summary of the document")
     created_at: datetime
 
     model_config = {"from_attributes": True}
