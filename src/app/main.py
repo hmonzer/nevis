@@ -5,9 +5,8 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from src.app.api.v1 import clients, documents, search
-from src.app.config import get_settings
+from src.app.containers import Container
 from src.app.logging import configure_logging
-from src.shared.database.database import Database, DatabaseSettings
 
 # Configure logging at module load time
 configure_logging()
@@ -18,13 +17,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    logger.info("Starting Nevis API...")
-    settings = get_settings()
+    container: Container = app.state.container
 
     # Initialize database tables on startup
-    logger.info("Initializing database...")
-    db_settings = DatabaseSettings(db_url=settings.database_url)
-    db = Database(db_settings)
+    db = container.database()
 
     async with db._engine.begin() as conn:
         # Enable pgvector extension
@@ -42,17 +38,30 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Nevis API...")
+    # Cleanup on shutdown
+    await db._engine.dispose()
 
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
-    settings = get_settings()
+    # Initialize the DI container
+    container = Container()
+    container.wire(modules=[
+        "src.app.api.v1.clients",
+        "src.app.api.v1.documents",
+        "src.app.api.v1.search",
+    ])
+
+    config = container.config()
 
     app = FastAPI(
-        title=settings.app_name,
-        version=settings.app_version,
+        title=config.app_name,
+        version=config.app_version,
         lifespan=lifespan
     )
+
+    # Attach container to app state for access in lifespan and routes
+    app.state.container = container
 
     # Include routers
     app.include_router(clients.router, prefix="/api/v1")

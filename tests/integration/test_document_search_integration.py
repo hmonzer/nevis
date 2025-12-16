@@ -1,168 +1,15 @@
 """Integration tests for end-to-end document search functionality."""
 import pytest
-import pytest_asyncio
-from pydantic.v1 import EmailStr
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from uuid import uuid4
 
-from src.app.core.services.document_processor import DocumentProcessor
-from src.app.core.services.document_service import DocumentService
-from src.app.core.services.chunking import RecursiveChunkingStrategy
-from src.app.core.services.embedding import SentenceTransformerEmbedding
-from src.app.core.services.chunks_search_service import DocumentChunkSearchService
-from src.app.core.services.reranker import CrossEncoderReranker
-from src.app.core.services.rrf import ReciprocalRankFusion
-from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
-from src.app.infrastructure.client_repository import ClientRepository
-from src.app.infrastructure.document_repository import DocumentRepository
-from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
-from src.app.infrastructure.mappers.client_mapper import ClientMapper
-from src.app.infrastructure.mappers.document_mapper import DocumentMapper
-from src.shared.database.entity_mapper import EntityMapper
-from src.shared.database.unit_of_work import UnitOfWork
-from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
-from src.app.core.domain.models import Client, Document, DocumentChunk, SearchRequest
-
-
-@pytest_asyncio.fixture(scope="module")
-def sentence_transformer_model():
-    """Create a SentenceTransformer model instance."""
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-
-@pytest_asyncio.fixture(scope="module")
-def embedding_service(sentence_transformer_model):
-    """Create an embedding service."""
-    return SentenceTransformerEmbedding(sentence_transformer_model)
-
-
-@pytest_asyncio.fixture(scope="module")
-def chunking_service():
-    """Create a chunking service."""
-    return RecursiveChunkingStrategy(chunk_size=200, chunk_overlap=50)
-
-
-@pytest_asyncio.fixture(scope="module")
-def document_processor(chunking_service, embedding_service):
-    """Create a document processor."""
-    return DocumentProcessor(
-        chunking_strategy=chunking_service,
-        embedding_service=embedding_service,
-    )
-
-
-@pytest_asyncio.fixture
-def search_repository(clean_database):
-    """Create a document search repository."""
-    return ChunksRepositorySearch(clean_database, DocumentChunkMapper())
-
-
-@pytest_asyncio.fixture(scope="module")
-def cross_encoder_model():
-    """Create a CrossEncoder model instance for reranking."""
-    # Using a smaller model for faster tests
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-
-@pytest_asyncio.fixture(scope="module")
-def reranker_service(cross_encoder_model):
-    """Create a reranker service."""
-    return CrossEncoderReranker(cross_encoder_model)
-
-
-@pytest_asyncio.fixture(scope="module")
-def rrf():
-    """Create a Reciprocal Rank Fusion instance."""
-    return ReciprocalRankFusion(k=60)
-
-
-@pytest_asyncio.fixture
-def search_service(embedding_service, search_repository, rrf):
-    """Create a document chunk search service WITHOUT reranking."""
-    return DocumentChunkSearchService(
-        embedding_service=embedding_service,
-        search_repository=search_repository,
-        rrf=rrf
-    )
-
-
-@pytest_asyncio.fixture
-def search_service_with_reranker(embedding_service, search_repository, rrf, reranker_service):
-    """Create a document chunk search service WITH reranking."""
-    return DocumentChunkSearchService(
-        embedding_service=embedding_service,
-        search_repository=search_repository,
-        rrf=rrf,
-        reranker_service=reranker_service
-    )
-
-
-@pytest_asyncio.fixture
-async def entity_mapper():
-    """Create entity mapper for unit of work."""
-    return EntityMapper(
-        entity_mappings={
-            Client: ClientMapper().to_entity,
-            Document: DocumentMapper().to_entity,
-            DocumentChunk: DocumentChunkMapper().to_entity,
-        }
-    )
-
-
-@pytest_asyncio.fixture
-def client_repository(clean_database):
-    """Create a client repository."""
-    return ClientRepository(clean_database, ClientMapper())
-
-
-@pytest_asyncio.fixture
-def document_repository(clean_database):
-    """Create a document repository."""
-    return DocumentRepository(clean_database, DocumentMapper())
-
-
-@pytest_asyncio.fixture
-def unit_of_work_fixture(clean_database, entity_mapper):
-    """Create a unit of work instance."""
-    return UnitOfWork(clean_database, entity_mapper)
-
-
-@pytest_asyncio.fixture
-def s3_storage(s3_endpoint_url):
-    """Create S3 storage instance for LocalStack."""
-    settings = S3BlobStorageSettings(
-        bucket_name="test-documents",
-        endpoint_url=s3_endpoint_url,
-        region_name="us-east-1",
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-    )
-    return S3BlobStorage(settings)
-
-
-@pytest_asyncio.fixture
-def document_service(
-    client_repository,
-    document_repository,
-    unit_of_work_fixture,
-    s3_storage,
-    document_processor
-):
-    """Create a document service."""
-    return DocumentService(
-        client_repository=client_repository,
-        document_repository=document_repository,
-        unit_of_work=unit_of_work_fixture,
-        blob_storage=s3_storage,
-        document_processor=document_processor
-    )
+from src.app.core.domain.models import Client, SearchRequest
 
 
 @pytest.mark.asyncio
 async def test_end_to_end_document_search_proof_of_address(
     clean_database,
     document_service,
-    search_service,
+        search_service_no_rerank,
     unit_of_work_fixture,
     localstack_container
 ):
@@ -179,7 +26,7 @@ async def test_end_to_end_document_search_proof_of_address(
         id=uuid4(),
         first_name="John",
         last_name="Doe",
-        email=EmailStr("john.doe@test.com"),
+        email="john.doe@test.com",
         description="Test client for proof of address search"
     )
 
@@ -279,7 +126,7 @@ async def test_end_to_end_document_search_proof_of_address(
 
     # 5. Search for "proof of address"
     request = SearchRequest(query="proof of address", top_k=5)
-    results = await search_service.search(request)
+    results = await search_service_no_rerank.search(request)
 
     # 6. Verify results
     assert len(results) > 0, "Should find at least one relevant chunk"
@@ -288,7 +135,7 @@ async def test_end_to_end_document_search_proof_of_address(
     for i in range(len(results) - 1):
         assert results[i].score >= results[i + 1].score, "Results should be ordered by score descending"
 
-    # Verify all scores are valid (RRF scores are small positive values)
+    # Verify all scores are valid (RRF scores are typically small positive values)
     for result in results:
         assert result.score > 0, f"Score {result.score} should be positive"
 
@@ -307,8 +154,8 @@ async def test_end_to_end_document_search_proof_of_address(
 async def test_reranking_produces_different_scores(
     clean_database,
     document_service,
-    search_service,
-    search_service_with_reranker,
+        search_service_no_rerank,
+        search_service,
     unit_of_work_fixture,
     localstack_container
 ):
@@ -323,7 +170,7 @@ async def test_reranking_produces_different_scores(
         id=uuid4(),
         first_name="Alice",
         last_name="Johnson",
-        email=EmailStr("alice.johnson@test.com"),
+        email="alice.johnson@test.com",
         description="Test client for reranking comparison"
     )
 
@@ -356,10 +203,10 @@ async def test_reranking_produces_different_scores(
 
     # 3. Search WITHOUT reranking
     request = SearchRequest(query="proof of address", top_k=5)
-    results_no_rerank = await search_service.search(request)
+    results_no_rerank = await search_service_no_rerank.search(request)
 
     # 4. Search WITH reranking
-    results_with_rerank = await search_service_with_reranker.search(request)
+    results_with_rerank = await search_service.search(request)
 
     # 5. Verify both return results
     assert len(results_no_rerank) > 0, "Should find results without reranking"
@@ -385,18 +232,18 @@ async def test_reranking_produces_different_scores(
         f"Cosine: {cosine_score:.4f}, Reranked: {reranked_score:.4f}"
     )
 
-    print("\n=== Reranking Impact ===")
+    print(f"\n=== Reranking Impact ===")
     print(f"Top result cosine similarity score: {cosine_score:.4f}")
     print(f"Top result cross-encoder score: {reranked_score:.4f}")
     print(f"Score difference: {abs(reranked_score - cosine_score):.4f}")
-    print("Both methods ranked utility bill as most relevant ✓")
+    print(f"Both methods ranked utility bill as most relevant ✓")
 
 
 @pytest.mark.asyncio
 async def test_search_with_similarity_threshold(
     clean_database,
     document_service,
-    search_service,
+        search_service_no_rerank,
     unit_of_work_fixture,
     localstack_container
 ):
@@ -408,7 +255,7 @@ async def test_search_with_similarity_threshold(
         id=uuid4(),
         first_name="Jane",
         last_name="Smith",
-        email=EmailStr("jane.smith@test.com"),
+        email="jane.smith@test.com",
         description="Test client for threshold testing"
     )
 
@@ -441,13 +288,13 @@ async def test_search_with_similarity_threshold(
     )
     await document_service.process_document(document.id, document_content)
 
-    # 3. Search with high similarity threshold (0.7)
-    request_high = SearchRequest(query="proof of address", top_k=10, threshold=0.7)
-    results_high_threshold = await search_service.search(request_high)
+    # 3. Search with high similarity threshold (0.5) - filters vector search before RRF
+    request_high = SearchRequest(query="proof of address", top_k=10, threshold=0.5)
+    results_high_threshold = await search_service_no_rerank.search(request_high)
 
     # 4. Search with low similarity threshold (0.3)
     request_low = SearchRequest(query="proof of address", top_k=10, threshold=0.3)
-    results_low_threshold = await search_service.search(request_low)
+    results_low_threshold = await search_service_no_rerank.search(request_low)
 
     # Assert - High threshold should return fewer or equal results
     assert len(results_high_threshold) <= len(results_low_threshold), (
@@ -457,4 +304,4 @@ async def test_search_with_similarity_threshold(
 
     # All results should have positive scores (RRF scores)
     for result in results_high_threshold:
-        assert result.score > 0, f"Result score {result.score} should be positive"
+        assert result.score > 0, f"Result with score {result.score} should be positive"

@@ -1,9 +1,10 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from dependency_injector.wiring import Provide, inject
 
+from src.app.containers import Container
 from src.app.core.services.document_service import DocumentService
 from src.client.schemas import CreateDocumentRequest, DocumentResponse
-from src.app.api.dependencies import get_document_service
 from src.app.api.mappers import to_document_response
 from src.shared.exceptions import EntityNotFound
 from src.app.logging import get_logger
@@ -13,11 +14,12 @@ logger = get_logger(__name__)
 
 
 @router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@inject
 async def create_document(
     client_id: UUID,
     request: CreateDocumentRequest,
     background_tasks: BackgroundTasks,
-    service: DocumentService = Depends(get_document_service),
+    service: DocumentService = Depends(Provide[Container.document_service]),
 ) -> DocumentResponse:
     """
     Upload and process a document for a client.
@@ -61,10 +63,11 @@ async def create_document(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
+@inject
 async def get_document(
     client_id: UUID,
     document_id: UUID,
-    service: DocumentService = Depends(get_document_service),
+    service: DocumentService = Depends(Provide[Container.document_service]),
 ) -> DocumentResponse:
     """
     Get a document by ID.
@@ -91,9 +94,10 @@ async def get_document(
 
 
 @router.get("/", response_model=list[DocumentResponse])
+@inject
 async def list_client_documents(
     client_id: UUID,
-    service: DocumentService = Depends(get_document_service),
+    service: DocumentService = Depends(Provide[Container.document_service]),
 ) -> list[DocumentResponse]:
     """
     Get all documents for a specific client.

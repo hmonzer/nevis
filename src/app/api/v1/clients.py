@@ -1,9 +1,10 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
+from dependency_injector.wiring import Provide, inject
 
+from src.app.containers import Container
 from src.app.core.services.client_service import ClientService
 from src.client.schemas import CreateClientRequest, ClientResponse
-from src.app.api.dependencies import get_client_service
 from src.app.api.mappers import to_client_response
 from src.shared.exceptions import EntityNotFound, ConflictingEntityFound
 from src.app.logging import get_logger
@@ -13,9 +14,10 @@ logger = get_logger(__name__)
 
 
 @router.post("/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
+@inject
 async def create_client(
     request: CreateClientRequest,
-    service: ClientService = Depends(get_client_service)
+    service: ClientService = Depends(Provide[Container.client_service])
 ) -> ClientResponse:
     """Create a new client."""
     try:
@@ -30,9 +32,10 @@ async def create_client(
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
+@inject
 async def get_client(
     client_id: UUID,
-    service: ClientService = Depends(get_client_service)
+    service: ClientService = Depends(Provide[Container.client_service])
 ) -> ClientResponse:
     """Get a client by ID."""
     try:

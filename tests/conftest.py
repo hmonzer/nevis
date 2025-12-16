@@ -4,32 +4,18 @@ import os
 
 import pytest
 import pytest_asyncio
+from dependency_injector import providers
 from httpx import ASGITransport, AsyncClient
 from testcontainers.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 from sqlalchemy import text
 
-from src.app.main import create_app
+from src.app.containers import Container
 from src.client import NevisClient
 from src.shared.database.database import Database, Base, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
-from src.shared.database.entity_mapper import EntityMapper
-from src.app.infrastructure.mappers.client_mapper import ClientMapper
-from src.app.infrastructure.mappers.document_mapper import DocumentMapper
-from src.app.infrastructure.mappers.document_chunk_mapper import DocumentChunkMapper
-from src.app.core.domain.models import Client, Document, DocumentChunk
 from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
-
-@pytest.fixture(scope="session")
-def get_entity_mapper_fixture():
-    return EntityMapper(
-        entity_mappings={
-            Client: ClientMapper().to_entity,
-            Document: DocumentMapper().to_entity,
-            DocumentChunk: DocumentChunkMapper().to_entity,
-        }
-    )
 
 
 @pytest.fixture(scope="module")
@@ -83,22 +69,6 @@ def s3_endpoint_url(localstack_container):
 
 
 @pytest.fixture(scope="module")
-def s3_storage(s3_endpoint_url):
-    """
-    Get S3 blob storage instance configured for LocalStack.
-    Module-scoped for reuse across tests.
-    """
-    settings = S3BlobStorageSettings(
-        bucket_name="test-documents",
-        endpoint_url=s3_endpoint_url,
-        region_name="us-east-1",
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-    )
-    return S3BlobStorage(settings)
-
-
-@pytest.fixture(scope="module")
 def test_settings_override(async_db_url, s3_endpoint_url):
     """
     Centralized settings override for all test configurations.
@@ -107,7 +77,6 @@ def test_settings_override(async_db_url, s3_endpoint_url):
     This fixture manages all environment variable overrides needed for testing,
     providing a single place to configure test settings.
     """
-
     os.environ["DATABASE_URL"] = async_db_url
     os.environ["S3_ENDPOINT_URL"] = s3_endpoint_url
     os.environ["S3_BUCKET_NAME"] = "test-documents"
@@ -139,7 +108,7 @@ async def wait_till_db_ready(db: Database, max_attempts: int = 20):
             async with db._engine.begin():
                 return
         except Exception:
-            await asyncio.sleep(0.2)  # Increased sleep time
+            await asyncio.sleep(0.2)
     raise Exception(f"Database not ready after {max_attempts} attempts")
 
 
@@ -173,22 +142,72 @@ async def clean_database(db):
     yield db
 
 
-@pytest_asyncio.fixture(scope="module")
-async def test_app(test_settings_override):
+@pytest.fixture(scope="function")
+def test_container(test_settings_override, clean_database):
     """
-    Create test application with test database.
-    Module-scoped so the app is created once per test module for better performance.
-    Uses centralized test_settings_override fixture for configuration.
+    Create a test container with database override for proper test isolation.
+    Function-scoped to ensure each test gets a fresh container.
+
+    Overrides the container's database singleton with the test database.
     """
-    app = create_app()
+    container = Container()
+
+    # Override the database singleton with the test database instance
+    container.database.override(providers.Object(clean_database))
+
+    container.wire(modules=[
+        "src.app.api.v1.clients",
+        "src.app.api.v1.documents",
+        "src.app.api.v1.search",
+    ])
+    yield container
+    container.database.reset_override()
+    container.unwire()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_app(test_container):
+    """
+    Create test application with container.
+    Function-scoped for test isolation.
+    """
+    from fastapi import FastAPI
+    from contextlib import asynccontextmanager
+    from src.app.api.v1 import clients, documents, search
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Database tables are already created by clean_database fixture
+        yield
+
+    config = test_container.config()
+    app = FastAPI(
+        title=config.app_name,
+        version=config.app_version,
+        lifespan=lifespan
+    )
+    app.state.container = test_container
+
+    app.include_router(clients.router, prefix="/api/v1")
+    app.include_router(documents.router, prefix="/api/v1")
+    app.include_router(search.router, prefix="/api/v1")
+
+    @app.get("/")
+    async def root():
+        return {"message": "Welcome to Nevis API"}
+
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy"}
+
     yield app
 
 
 @pytest_asyncio.fixture
-async def nevis_client(test_app, clean_database):
+async def nevis_client(test_app):
     """
     Create a Nevis client for testing.
-    Depends on clean_database to ensure test isolation between runs.
+    test_app already depends on clean_database for test isolation.
     """
     transport = ASGITransport(app=test_app)
     http_client = AsyncClient(transport=transport, base_url="http://test")
@@ -199,8 +218,121 @@ async def nevis_client(test_app, clean_database):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def unit_of_work(clean_database, get_entity_mapper_fixture):
+async def unit_of_work(clean_database, test_container):
     """
     Fixture for a UnitOfWork instance with a clean database.
+    Uses the container's entity_mapper singleton.
     """
-    yield UnitOfWork(clean_database, get_entity_mapper_fixture)
+    entity_mapper = test_container.entity_mapper()
+    yield UnitOfWork(clean_database, entity_mapper)
+
+
+# =========================================================================
+# Service fixtures from container (for direct service testing)
+# =========================================================================
+
+@pytest.fixture
+def s3_storage(s3_endpoint_url):
+    """
+    Get S3 blob storage instance configured for LocalStack.
+    """
+    settings = S3BlobStorageSettings(
+        bucket_name="test-documents",
+        endpoint_url=s3_endpoint_url,
+        region_name="us-east-1",
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+    )
+    return S3BlobStorage(settings)
+
+
+# =========================================================================
+# Common repository fixtures (available to all test directories)
+# =========================================================================
+
+@pytest_asyncio.fixture
+def client_repository(test_container):
+    """Get client repository from container."""
+    return test_container.client_repository()
+
+
+@pytest_asyncio.fixture
+def document_repository(test_container):
+    """Get document repository from container."""
+    return test_container.document_repository()
+
+
+@pytest_asyncio.fixture
+def document_chunk_repository(test_container):
+    """Get document chunk repository from container."""
+    return test_container.document_chunk_repository()
+
+
+@pytest_asyncio.fixture
+def chunks_search_repository(test_container):
+    """Get chunks search repository from container."""
+    return test_container.chunks_search_repository()
+
+
+@pytest_asyncio.fixture
+def client_search_repository(test_container):
+    """Get client search repository from container."""
+    return test_container.client_search_repository()
+
+
+# =========================================================================
+# Common service fixtures (available to all test directories)
+# =========================================================================
+
+@pytest_asyncio.fixture
+def unit_of_work_fixture(test_container):
+    """Get unit of work from container."""
+    return test_container.unit_of_work()
+
+
+@pytest_asyncio.fixture
+def document_service(test_container):
+    """Get document service from container."""
+    return test_container.document_service()
+
+
+@pytest_asyncio.fixture
+def client_service(test_container):
+    """Get client service from container."""
+    return test_container.client_service()
+
+
+@pytest_asyncio.fixture
+def embedding_service(test_container):
+    """Get embedding service from container."""
+    return test_container.embedding_service()
+
+
+@pytest_asyncio.fixture
+def chunk_search_service(test_container):
+    """Get document chunk search service from container."""
+    return test_container.document_chunk_search_service()
+
+
+@pytest_asyncio.fixture
+def document_search_service(test_container):
+    """Get document search service from container."""
+    return test_container.document_search_service()
+
+
+@pytest_asyncio.fixture
+def client_search_service(test_container):
+    """Get client search service from container."""
+    return test_container.client_search_service()
+
+
+@pytest_asyncio.fixture
+def search_service(test_container):
+    """Get unified search service WITH reranking from container."""
+    return test_container.search_service()
+
+
+@pytest_asyncio.fixture
+def search_service_no_rerank(test_container):
+    """Get unified search service WITHOUT reranking from container."""
+    return test_container.search_service_no_rerank()
