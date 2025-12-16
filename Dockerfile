@@ -22,10 +22,13 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY src /app/src
 COPY pyproject.toml /app/
 
-# Install the project itself (editable mode is default for uv sync without --no-install-project, 
+# Install the project itself (editable mode is default for uv sync without --no-install-project,
 # but we used --no-install-project above to cache deps layer, so now we install the app)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
+
+# Disable tokenizers parallelism to avoid fork warnings
+ENV TOKENIZERS_PARALLELISM=false
 
 EXPOSE 8000
 

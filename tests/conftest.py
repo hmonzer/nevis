@@ -1,6 +1,11 @@
 """Shared test fixtures and utilities for all tests."""
-import asyncio
 import os
+
+# Disable tokenizers parallelism to avoid fork warnings from HuggingFace
+# This must be set before any tokenizers are imported
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import asyncio
 
 import pytest
 import pytest_asyncio

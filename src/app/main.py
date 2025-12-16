@@ -21,7 +21,7 @@ LifespanType = Callable[[FastAPI], AsyncIterator[None]]
 
 @asynccontextmanager
 async def default_lifespan(app: FastAPI):
-    """Default application lifespan manager - initializes database on startup."""
+    """Default application lifespan manager - initializes database and loads models on startup."""
     container: Container = app.state.container
     logger.info("Starting Nevis API...")
 
@@ -39,6 +39,13 @@ async def default_lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     logger.info("Database initialized successfully")
+
+    # Eagerly load ML models at startup to avoid cold-start latency on first request
+    logger.info("Loading ML models...")
+    _ = container.sentence_transformer_model()  # Load embedding model
+    _ = container.cross_encoder_model()  # Load reranker model
+    _ = container.tokenizer()  # Load tokenizer
+    logger.info("ML models loaded successfully")
 
     yield
 

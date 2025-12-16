@@ -150,10 +150,10 @@ docker compose up --build
 # Stop all services
 docker compose down
 ```
-> [!WARNING]  
->  When calling upload document for the first time, there's a delay as models are downloaded for the first time.
-> Optimizing this process is on the TODO list. 
- 
+
+> [!NOTE]
+> **Startup Delay**: The application loads ML models (embedding and reranker) during startup to ensure fast API responses. On first run, models are downloaded from HuggingFace (~400MB total), which may take a few seconds/minutes depending on your connection.
+
 **Services included:**
 - `app` - Nevis API (port 8000)
 - `db` - PostgreSQL with pgvector (port 5432)
