@@ -17,7 +17,6 @@ router = APIRouter(prefix="/search", tags=["search"])
 async def search(
     q: Annotated[str, Query(min_length=1, description="Search query string")],
     top_k: Annotated[int, Query(gt=0, le=100, description="Maximum number of results")] = 3,
-    threshold: Annotated[float, Query(ge=-1.0, le=1.0, description="Minimum similarity threshold")] = 0.5,
     service: SearchService = Depends(Provide[Container.search_service])
 ) -> list[SearchResultResponse]:
     """
@@ -25,17 +24,17 @@ async def search(
 
     This endpoint performs a unified search across all clients and documents,
     combining vector similarity search with keyword search for improved results.
+    Similarity thresholds are configured per-component in application settings.
 
     Args:
         q: The search query string
-        top_k: Maximum number of results to return (default: 10, max: 100)
-        threshold: Minimum similarity threshold for results (default: 0.5)
+        top_k: Maximum number of results to return (default: 3, max: 100)
 
     Returns:
         List of search results containing matched clients and documents,
         ranked by relevance score
     """
-    request = SearchRequest(query=q, top_k=top_k, threshold=threshold)
+    request = SearchRequest(query=q, top_k=top_k)
     results = await service.search(request)
 
     return [to_search_result_response(result) for result in results]

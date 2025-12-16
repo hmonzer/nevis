@@ -23,18 +23,28 @@ class Settings(BaseSettings):
     # ML Model Settings
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     chunk_reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # For production: BAAI/bge-reranker-v2-m3
-    # Reranker Settings
-    # Cross-encoder models output logits in range ~[-12, +12]
-    # Positive scores indicate relevance, negative scores indicate irrelevance
-    # A threshold of 0.0 filters out clearly irrelevant results
-    # Use -2.0 to -3.0 for more permissive filtering (includes borderline results)
-    chunk_reranker_score_threshold: float = 0.0
+    # Search Threshold Settings
+    # Each search component has its own threshold suited to its scoring semantics
 
-    # Search Settings
+    # Client Search (pg_trgm trigram similarity)
+    # Range: [0, 1] - Higher means stricter matching
+    # 0.1 is permissive, catches partial word matches
+    client_search_trgm_threshold: float = 0.32
+
+    # Document Chunk Vector Search (cosine similarity)
+    # Range: [-1, 1] - Higher means more similar vectors
+    # 0.3 balances recall with precision
+    chunk_vector_similarity_threshold: float = 0.3
+
+    # Reranker (CrossEncoder logits)
+    # Range: ~[-12, +12] - Positive = relevant, negative = irrelevant
+    # 0.0 is the decision boundary (50% relevance probability after sigmoid)
+    # Use -2.0 to -3.0 for more permissive filtering
+    chunk_reranker_score_threshold: float = 2.0
+
+    # Search Pagination Settings
     search_default_top_k: int = 3
-    search_default_threshold: float = 0.5
     search_max_top_k: int = 100
-    client_search_default_threshold: float = 0.1
 
 
 

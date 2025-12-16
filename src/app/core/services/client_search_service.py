@@ -13,14 +13,21 @@ class ClientSearchService:
     pg_trgm fuzzy matching extension.
     """
 
-    def __init__(self, search_repository: ClientSearchRepository):
+    def __init__(
+        self,
+        search_repository: ClientSearchRepository,
+        pg_trgm_threshold: float,
+    ):
         """
         Initialize the client search service.
 
         Args:
             search_repository: Repository for performing client searches
+            pg_trgm_threshold: Minimum trigram similarity score (0.0 to 1.0) for results.
+                      Configured via client_search_trgm_threshold in settings.
         """
         self.search_repository = search_repository
+        self.pg_trgm_threshold = pg_trgm_threshold
 
     async def search(
         self,
@@ -33,16 +40,15 @@ class ClientSearchService:
         last name, description) and returns results ranked by relevance.
 
         Args:
-            request: SearchRequest containing query, top_k, and threshold parameters.
-                    Validation is handled by the SearchRequest model.
+            request: SearchRequest containing query and top_k parameters.
 
         Returns:
             List of ClientSearchResult objects ordered by relevance (highest similarity first)
         """
-        # Perform search using repository
+        # Perform search using repository with configured threshold
         results = await self.search_repository.search(
             query=request.query,
-            threshold=request.threshold,
+            threshold=self.pg_trgm_threshold,
             limit=request.top_k
         )
 

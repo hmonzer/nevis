@@ -191,7 +191,7 @@
         {
           "query_id": "q_notes_01",
           "query_text": "Miller property purchase France",
-          "expected_result_ids": ["doc_miller_note_oct"]
+          "expected_result_ids": ["doc_miller_note_oct", "doc_miller_note_dec"]
         },
         {
           "query_id": "q_notes_02",

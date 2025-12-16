@@ -29,7 +29,8 @@ class DocumentChunkSearchService:
         search_repository: ChunksRepositorySearch,
         rrf: ReciprocalRankFusion,
         reranker_service: Optional[RerankerService] = None,
-        reranker_score_threshold: float = 0.0
+        reranker_score_threshold: float = 0.0,
+        vector_similarity_threshold: float = 0.3,
     ):
         """
         Initialize the document search service.
@@ -43,12 +44,15 @@ class DocumentChunkSearchService:
                 Cross-encoder models output logits in range ~[-12, +12].
                 Results with scores below this threshold are filtered out.
                 Only applied when reranker_service is provided.
+            vector_similarity_threshold: Minimum cosine similarity threshold for
+                vector search results. Range [-1, 1]. Configured via settings.
         """
         self.embedding_service = embedding_service
         self.search_repository = search_repository
         self.rrf = rrf
         self.reranker_service = reranker_service
         self.reranker_score_threshold = reranker_score_threshold
+        self.vector_similarity_threshold = vector_similarity_threshold
 
     async def search(
         self,
@@ -93,11 +97,11 @@ class DocumentChunkSearchService:
         logger.debug("Generated query embedding with %d dimensions", len(embedding_result.embedding))
         logger.info("Keyword search returned %d results", len(keyword_results))
 
-        # Run vector search with the embedding
+        # Run vector search with the embedding using configured threshold
         vector_results = await self.search_repository.search_by_vector(
             query_vector=embedding_result.embedding,
             limit=retrieval_limit,
-            similarity_threshold=request.threshold
+            similarity_threshold=self.vector_similarity_threshold
         )
 
         logger.info("Vector search returned %d results", len(vector_results))

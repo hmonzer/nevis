@@ -110,10 +110,10 @@ class SearchRequest(BaseModel):
     Request model for search operations across all search services.
 
     Provides centralized validation for common search parameters.
+    Thresholds are configured per-component in application settings.
     """
     query: str = Field(..., min_length=1, description="Search query string")
     top_k: int = Field(default=10, gt=0, le=100, description="Maximum number of results to return")
-    threshold: float = Field(default=0.5, ge=-1.0, le=1.0, description="Minimum similarity threshold for results")
 
     @field_validator("query")
     @classmethod

@@ -12,11 +12,10 @@ class TestSearchRequestValidation:
 
     def test_valid_request_with_all_parameters(self):
         """Test creating a valid SearchRequest with all parameters."""
-        request = SearchRequest(query="test query", top_k=10, threshold=0.5)
+        request = SearchRequest(query="test query", top_k=10)
 
         assert request.query == "test query"
         assert request.top_k == 10
-        assert request.threshold == 0.5
 
     def test_valid_request_with_defaults(self):
         """Test creating a valid SearchRequest with default parameters."""
@@ -24,7 +23,6 @@ class TestSearchRequestValidation:
 
         assert request.query == "test query"
         assert request.top_k == 10  # Default
-        assert request.threshold == 0.5  # Default
 
     def test_query_whitespace_trimming(self):
         """Test that query strings are trimmed of leading/trailing whitespace."""
@@ -108,45 +106,6 @@ class TestSearchRequestTopK:
         assert any(err["loc"] == ("top_k",) for err in errors)
 
 
-class TestSearchRequestThreshold:
-    """Test SearchRequest threshold validation."""
-
-    def test_threshold_minimum_valid_value(self):
-        """Test that threshold=-1.0 is valid (minimum for cosine similarity)."""
-        request = SearchRequest(query="test", threshold=-1.0)
-        assert request.threshold == -1.0
-
-    def test_threshold_maximum_valid_value(self):
-        """Test that threshold=1.0 is valid (maximum)."""
-        request = SearchRequest(query="test", threshold=1.0)
-        assert request.threshold == 1.0
-
-    def test_threshold_zero_is_valid(self):
-        """Test that threshold=0.0 is valid."""
-        request = SearchRequest(query="test", threshold=0.0)
-        assert request.threshold == 0.0
-
-    def test_threshold_below_minimum_raises_error(self):
-        """Test that threshold < -1.0 raises validation error."""
-        with pytest.raises(ValidationError) as exc_info:
-            SearchRequest(query="test", threshold=-1.1)
-
-        error = cast(ValidationError, exc_info.value)
-        errors = error.errors()
-        assert len(errors) > 0
-        assert any(err["loc"] == ("threshold",) for err in errors)
-
-    def test_threshold_above_maximum_raises_error(self):
-        """Test that threshold > 1.0 raises validation error."""
-        with pytest.raises(ValidationError) as exc_info:
-            SearchRequest(query="test", threshold=1.5)
-
-        error = cast(ValidationError, exc_info.value)
-        errors = error.errors()
-        assert len(errors) > 0
-        assert any(err["loc"] == ("threshold",) for err in errors)
-
-
 class TestSearchRequestEdgeCases:
     """Test SearchRequest edge cases and combinations."""
 
@@ -175,13 +134,12 @@ class TestSearchRequestEdgeCases:
     def test_multiple_validation_errors(self):
         """Test that multiple validation errors are caught together."""
         with pytest.raises(ValidationError) as exc_info:
-            SearchRequest(query="", top_k=0, threshold=2.0)
+            SearchRequest(query="", top_k=0)
 
         error = cast(ValidationError, exc_info.value)
         errors = error.errors()
 
-        # Should have errors for query, top_k, and threshold
+        # Should have errors for query and top_k
         error_fields = {err["loc"][0] for err in errors}
         assert "query" in error_fields
         assert "top_k" in error_fields
-        assert "threshold" in error_fields

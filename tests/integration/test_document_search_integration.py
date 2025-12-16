@@ -240,7 +240,7 @@ async def test_reranking_produces_different_scores(
 
 
 @pytest.mark.asyncio
-async def test_search_with_similarity_threshold(
+async def test_search_returns_relevant_document(
     clean_database,
     document_service,
         search_service_no_rerank,
@@ -248,7 +248,8 @@ async def test_search_with_similarity_threshold(
     localstack_container
 ):
     """
-    Test that similarity threshold filters out low-relevance results.
+    Test that search returns relevant documents for a given query.
+    Note: Similarity threshold is now configured at the service level, not per-request.
     """
     # 1. Create a client
     client = Client(
@@ -256,7 +257,7 @@ async def test_search_with_similarity_threshold(
         first_name="Jane",
         last_name="Smith",
         email="jane.smith@test.com",
-        description="Test client for threshold testing"
+        description="Test client for search testing"
     )
 
     async with unit_of_work_fixture:
@@ -288,20 +289,13 @@ async def test_search_with_similarity_threshold(
     )
     await document_service.process_document(document.id, document_content)
 
-    # 3. Search with high similarity threshold (0.5) - filters vector search before RRF
-    request_high = SearchRequest(query="proof of address", top_k=10, threshold=0.5)
-    results_high_threshold = await search_service_no_rerank.search(request_high)
+    # 3. Search for relevant content
+    request = SearchRequest(query="proof of address", top_k=10)
+    results = await search_service_no_rerank.search(request)
 
-    # 4. Search with low similarity threshold (0.3)
-    request_low = SearchRequest(query="proof of address", top_k=10, threshold=0.3)
-    results_low_threshold = await search_service_no_rerank.search(request_low)
-
-    # Assert - High threshold should return fewer or equal results
-    assert len(results_high_threshold) <= len(results_low_threshold), (
-        f"High threshold returned {len(results_high_threshold)} results, "
-        f"low threshold returned {len(results_low_threshold)} results"
-    )
+    # Assert - Should find results
+    assert len(results) > 0, "Should find at least one result for 'proof of address'"
 
     # All results should have positive scores (RRF scores)
-    for result in results_high_threshold:
+    for result in results:
         assert result.score > 0, f"Result with score {result.score} should be positive"
