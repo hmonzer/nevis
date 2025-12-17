@@ -1,292 +1,76 @@
+"""
+E2E evaluation tests for wealth manager search functionality.
+
+Uses the reusable evaluation_runner module which can also be invoked via CLI:
+    python -m tests.e2e_eval.run_eval --url http://localhost:8000
+
+To run a specific evaluation dataset:
+    pytest tests/e2e_eval/test_wealth_manager_eval.py -k "synthetic_wealth_data" -v -s
+"""
 import logging
+from pathlib import Path
 
 import pytest
-from pathlib import Path
-from typing import Any
-from ranx import Qrels, Run, evaluate
 
-from src.client import NevisClient
-
-from tests.e2e_eval.data_setup import load_eval_suite, setup_corpus
-from tests.e2e_eval.evaluation import EvaluationMetrics, UseCaseResult, EvaluationReporter
+from tests.e2e_eval.data_setup import load_eval_suite
+from tests.e2e_eval.evaluation_runner import run_evaluation, EvaluationConfig
 
 
-def build_qrels_dict(test: Any, id_map: dict[str, Any]) -> dict[str, int]:
-    """
-    Build relevance judgments (qrels) for a single test query.
+# Directory containing evaluation data files
+DATA_DIR = Path(__file__).parent / "data"
 
-    Args:
-        test: Test case containing query_id and expected_result_ids
-        id_map: Mapping from synthetic IDs to actual database IDs
-
-    Returns:
-        Dictionary mapping document_id -> relevance_score (int)
-        Higher scores indicate higher relevance (first result gets highest score)
-    """
-    qrels_entry: dict[str, int] = {}
-
-    for rank, exp_id in enumerate(test.expected_result_ids):
-        if exp_id in id_map:
-            real_id = str(id_map[exp_id])
-            # Score = (num_expected - rank): first result gets highest score
-            # Example: [doc1, doc2, doc3] -> doc1=3, doc2=2, doc3=1
-            score = len(test.expected_result_ids) - rank
-            qrels_entry[real_id] = score
-        else:
-            print(f"Warning: Expected ID {exp_id} not found in creation map.")
-
-    return qrels_entry
+# List of evaluation datasets to run
+# Add new JSON files here to include them in the test suite
+EVAL_DATASETS = [
+    "synthetic_wealth_data.json",
+    "synthetic_wealth_data_large.json",
+    # Add more datasets here as they are created:
+]
 
 
-def build_run_dict_entry(results: list[Any]) -> dict[str, float]:
-    """
-    Build system output scores (run) for search results.
-
-    Args:
-        results: List of SearchResult objects from unified search
-
-    Returns:
-        Dictionary mapping entity_id -> score (float)
-        Higher scores for higher-ranked results (first result gets highest score)
-        Handles both CLIENT and DOCUMENT result types
-    """
-    run_entry: dict[str, float] = {}
-
-    for rank, result in enumerate(results):
-        # Score = (num_results - rank): mirrors qrels scoring pattern
-        # Example: 5 results -> 5.0, 4.0, 3.0, 2.0, 1.0
-        score = float(len(results) - rank)
-        run_entry[str(result.entity.id)] = score
-
-    return run_entry
-
-
-def log_query_results_compact(
-    query_text: str,
-    expected_ids: list[str],
-    results: list[Any],
-    reverse_map: dict[str, str],
-    top_k: int = 5,
-) -> None:
-    """
-    Log compact comparison of expected vs retrieved results.
-
-    Args:
-        query_text: The search query
-        expected_ids: List of expected synthetic IDs
-        results: List of SearchResult objects
-        reverse_map: Mapping from UUID to synthetic ID
-        top_k: Number of top results to consider for precision (default 5)
-    """
-    # Build retrieved synthetic IDs with scores for debugging
-    retrieved_with_info = []
-    for result in results:
-        entity_uuid = str(result.entity.id)
-        synthetic_id = reverse_map.get(entity_uuid, f"UNKNOWN_{entity_uuid[:8]}")
-        retrieved_with_info.append((synthetic_id, result.score, result.type))
-
-    retrieved_ids = [r[0] for r in retrieved_with_info]
-
-    # Show comparison
-    expected_set = set(expected_ids)
-    retrieved_set = set(retrieved_ids[:top_k])  # Only consider top_k for precision
-    all_retrieved_set = set(retrieved_ids)
-
-    missing = expected_set - all_retrieved_set  # Expected but not retrieved at all
-    extra = retrieved_set - expected_set  # Retrieved in top_k but not expected (hurts precision)
-    correct = expected_set & retrieved_set
-
-    # Only log if there are issues (missing OR extra docs)
-    if missing or extra:
-        # Format retrieved IDs with scores
-        retrieved_with_scores = [f"{syn_id}({score:.3f})" for syn_id, score, _ in retrieved_with_info[:top_k]]
-
-        print(f"    ⚠️  Query: '{query_text[:60]}'")
-        print(f"        Expected: {', '.join(expected_ids)}")
-        print(f"        Retrieved (top {top_k}): {', '.join(retrieved_with_scores)}")
-        print(f"        ✅ Correct: {len(correct)}/{len(expected_set)}", end="")
-
-        if missing:
-            print(f" | ❌ Missing: {', '.join(missing)}", end="")
-
-        if extra:
-            # Show extra docs with their scores and types for debugging
-            extra_details = []
-            for syn_id, score, result_type in retrieved_with_info[:top_k]:
-                if syn_id in extra:
-                    extra_details.append(f"{syn_id}({result_type}:{score:.3f})")
-            print(f" | 🔴 Extra (hurts precision): {', '.join(extra_details)}", end="")
-
-        print()  # Newline at the end
-
-
-async def run_eval_use_case(
-    use_case: Any,
-    id_map: dict[str, Any],
-    reverse_map: dict[str, str],
-    nevis_client: NevisClient,
-    top_k: int = 10,
-) -> UseCaseResult | None:
-    """
-    Run evaluation for a single use case.
-
-    Args:
-        use_case: Use case containing tests
-        id_map: Mapping from synthetic IDs to actual database IDs
-        reverse_map: Mapping from UUIDs to synthetic IDs (for logging)
-        nevis_client: API client for search requests
-        top_k: Number of results to retrieve
-
-    Returns:
-        UseCaseResult with metrics or None if no valid data
-    """
-    print(f"\n{'='*60}")
-    print(f"Running Use Case: {use_case.title}")
-    print(f"{'='*60}")
-
-    # Build Qrels (Ground Truth) and Run (System Output)
-    qrels_dict: dict[str, dict[str, int]] = {}
-    run_dict: dict[str, dict[str, float]] = {}
-
-    # Track negative test cases (queries expecting 0 results) as they skew metrics even when response matches expected
-    negative_tests_passed = 0
-    negative_tests_failed = 0
-
-    for test in use_case.tests:
-        results = await nevis_client.search(query=test.query_text, top_k=top_k)
-
-        num_clients = sum(1 for r in results if r.type == 'CLIENT')
-        num_documents = sum(1 for r in results if r.type == 'DOCUMENT')
-        print(f"  Query '{test.query_text[:50]}...': {len(results)} total results "
-              f"({num_clients} clients, {num_documents} documents)")
-
-        # Handle negative test cases (queries expecting 0 results)
-        if not test.expected_result_ids:
-            if len(results) == 0:
-                # Correct: expected nothing, got nothing - skip from IR metrics
-                negative_tests_passed += 1
-                print(f"    ✅ Negative test passed: correctly returned 0 results")
-                continue
-            else:
-                # Incorrect: expected nothing but got results - penalize in IR metrics
-                # Create a fake "expected" document that won't match any result
-                # This causes all metrics to be 0 for this query (MRR=0, Recall=0, etc.)
-                negative_tests_failed += 1
-                retrieved_ids = [reverse_map.get(str(r.entity.id), "UNKNOWN") for r in results[:5]]
-                print(f"    ❌ Negative test failed: expected 0 results, got {len(results)}: {retrieved_ids}")
-                qrels_dict[test.query_id] = {"__nonexistent_doc__": 1}
-                run_dict[test.query_id] = build_run_dict_entry(results)
-                continue
-
-        # Normal case: build ground truth relevance judgments
-        qrels_dict[test.query_id] = build_qrels_dict(test, id_map)
-
-        # Log details for queries with issues (missing or extra docs)
-        log_query_results_compact(test.query_text, test.expected_result_ids, results, reverse_map, top_k)
-
-        # Build system output scores
-        run_dict[test.query_id] = build_run_dict_entry(results)
-
-    # Log negative test summary
-    total_negative = negative_tests_passed + negative_tests_failed
-    if total_negative > 0:
-        print(f"\n  📋 Negative tests: {negative_tests_passed}/{total_negative} passed")
-
-    # Evaluate using Ranx
-    if not qrels_dict or not run_dict:
-        print("⚠️  No valid qrels or run data to evaluate")
-        return None
-
-    qrels = Qrels(qrels_dict)
-    run = Run(run_dict)  # type: ignore
-
-    ranx_metrics = evaluate(qrels, run, EvaluationMetrics.metrics)  # type: ignore
-
-    # Convert to our metrics model
-    metrics = EvaluationMetrics.from_ranx_result(ranx_metrics)
-
-    print(f"\n📊 Metrics for {use_case.title}:")
-    print(metrics)
-
-    # num_queries counts only queries included in IR evaluation
-    # (excludes passed negative tests which are correctly skipped)
-    return UseCaseResult(
-        use_case_title=use_case.title,
-        metrics=metrics,
-        num_queries=len(qrels_dict),
-    )
+def get_dataset_id(dataset_path: str) -> str:
+    """Extract a readable test ID from the dataset filename."""
+    return Path(dataset_path).stem
 
 
 @pytest.mark.asyncio
-async def test_wealth_manager_eval(caplog,
-    nevis_client,  # Used for data setup and search via API
-    document_repository  # Repository for efficient batch document status checking
-):
+@pytest.mark.parametrize(
+    "dataset_file",
+    EVAL_DATASETS,
+    ids=get_dataset_id,
+)
+async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
     """
     E2E evaluation of search API using synthetic wealth management data.
 
-    This test:
-    1. Loads an evaluation suite with a unified corpus
+    This parametrized test runs against each dataset in EVAL_DATASETS, allowing
+    multiple evaluation sets to be tested with the same framework.
+
+    Args:
+        caplog: pytest log capture fixture
+        nevis_client: Nevis API client fixture
+        dataset_file: Name of the JSON dataset file to evaluate
+
+    The test:
+    1. Loads an evaluation suite from the specified JSON file
     2. Ingests all corpus data once (clients and documents)
     3. For each use case, runs queries via the search API endpoint
     4. Compares search results against expected results using IR metrics
-    5. Collects metrics across all use cases for aggregate assessment
+    5. Asserts that at least one use case succeeded
     """
+    # Setting log level to CRITICAL to avoid noise and have a clear summary of evals
     caplog.set_level(logging.CRITICAL)
-    # 1. Load the Evaluation Suite
-    data_path = Path(__file__).parent / "data" / "synthetic_wealth_data.json"
+
+    # Load the evaluation suite
+    data_path = DATA_DIR / dataset_file
+    if not data_path.exists():
+        pytest.skip(f"Dataset file not found: {data_path}")
+
     suite = load_eval_suite(data_path)
 
-    print(f"\n{'='*60}")
-    print(f"Starting Evaluation Suite: {suite.suite_name}")
-    print(f"{'='*60}")
+    # Run evaluation using the reusable runner
+    config = EvaluationConfig(top_k=5, verbose=True)
+    result = await run_evaluation(nevis_client, suite, config)
 
-    # 2. Setup entire corpus once (all clients and documents)
-    print(f"\n{'='*60}")
-    print("Setting up corpus...")
-    print(f"{'='*60}")
-    id_map = await setup_corpus(suite, nevis_client, document_repository)
-    # Create reverse map for logging (UUID -> synthetic ID)
-    reverse_map = {str(uuid_val): synthetic_id for synthetic_id, uuid_val in id_map.items()}
-    print(f"✅ Corpus setup complete: {len(id_map)} entities created")
-
-    # 3. Run all use cases and collect results
-    all_results: list[UseCaseResult] = []
-    failures: list[tuple[str, str]] = []
-
-    for use_case in suite.use_cases:
-        try:
-            result = await run_eval_use_case(
-                use_case=use_case,
-                id_map=id_map,
-                reverse_map=reverse_map,
-                nevis_client=nevis_client,
-                top_k=5,
-            )
-
-            if result:
-                all_results.append(result)
-
-                # Soft validation: collect failures instead of asserting immediately
-                if result.metrics.recall_at_5 <= 0:
-                    failures.append((
-                        use_case.title,
-                        f"Recall@5 is {result.metrics.recall_at_5:.4f}, expected > 0"
-                    ))
-            else:
-                failures.append((use_case.title, "No valid evaluation data"))
-
-        except Exception as e:
-            print(f"❌ Error running use case '{use_case.title}': {e}")
-            failures.append((use_case.title, f"Exception: {str(e)}"))
-
-    # 4. Print aggregate results with formatted table
-    EvaluationReporter.print_summary(
-        suite_name=suite.suite_name,
-        total_use_cases=len(suite.use_cases),
-        all_results=all_results,
-        failures=failures,
-    )
-
-    # 5. Final assertion: fail test only if ALL use cases failed
-    assert len(all_results) > 0, "All use cases failed - no valid metrics collected"
+    # Assertions
+    assert len(result.results) > 0, f"All use cases failed for {dataset_file} - no valid metrics collected"

@@ -198,7 +198,7 @@ class Container(containers.DeclarativeContainer):
 
     cross_encoder_model = providers.Singleton(
         CrossEncoder,
-        model_name=config.provided.reranker.model_name,
+        model_name_or_path=config.provided.reranker.model_name,
     )
 
     # =========================================================================
