@@ -26,9 +26,14 @@ class ClientSearchSettings(BaseModel):
 
     Trigram similarity scores range from 0 to 1.
     Higher threshold = stricter matching.
+    retrieval_multiplier: How many extra candidates to fetch when reranking is enabled.
+    reranker_score_threshold: Minimum cross-encoder score for client results.
+        Client descriptions are typically short, so they may score lower than documents.
     """
 
     trgm_threshold: float = 0.32
+    retrieval_multiplier: int = 3
+    reranker_score_threshold: float = 1.5
 
 
 class ChunkSearchSettings(BaseModel):
@@ -37,11 +42,14 @@ class ChunkSearchSettings(BaseModel):
 
     Vector similarity uses cosine similarity ranging from -1 to 1.
     Retrieval multipliers control how many candidates to fetch before ranking.
+    reranker_score_threshold: Minimum cross-encoder score for chunk results.
+        Document chunks typically have more content and score higher than client descriptions.
     """
 
     vector_similarity_threshold: float = 0.3
     retrieval_multiplier_with_rerank: int = 3
     retrieval_multiplier_no_rerank: int = 2
+    reranker_score_threshold: float = 2.0
 
 
 class DocumentSearchSettings(BaseModel):
@@ -58,14 +66,15 @@ class RerankerSettings(BaseModel):
     """
     Cross-encoder reranker settings.
 
-    Score threshold filters results after reranking.
     CrossEncoder logits typically range from -12 to +12.
     Positive = relevant, negative = irrelevant.
     0.0 is the decision boundary (50% relevance probability).
+
+    Note: Score thresholds are configured per-search-type in
+    ClientSearchSettings and ChunkSearchSettings.
     """
 
     model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    score_threshold: float = 2.0
 
 
 class RRFSettings(BaseModel):

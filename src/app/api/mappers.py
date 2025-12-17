@@ -70,5 +70,4 @@ def to_search_result_response(result: SearchResult) -> SearchResultResponse:
         type=SearchResultTypeEnum(result.type),
         entity=entity_response,
         score=result.score,
-        rank=result.rank,
     )

@@ -133,15 +133,15 @@ async def test_end_to_end_document_search_proof_of_address(
 
     # Verify scores are in descending order
     for i in range(len(results) - 1):
-        assert results[i].score >= results[i + 1].score, "Results should be ordered by score descending"
+        assert results[i].value >= results[i + 1].value, "Results should be ordered by score descending"
 
     # Verify all scores are valid (RRF scores are typically small positive values)
     for result in results:
-        assert result.score > 0, f"Score {result.score} should be positive"
+        assert result.value > 0, f"Score {result.value} should be positive"
 
     # 7. Verify utility bill chunks rank highest
     # Get the top result's document_id
-    top_result_doc_id = results[0].chunk.document_id
+    top_result_doc_id = results[0].item.document_id
 
     # The top result should be from the utility bill (which has explicit "proof of address" language)
     assert top_result_doc_id == utility_bill.id, (
@@ -213,18 +213,18 @@ async def test_reranking_produces_different_scores(
     assert len(results_with_rerank) > 0, "Should find results with reranking"
 
     # 6. Verify utility bill ranks first in both cases
-    assert results_no_rerank[0].chunk.document_id == utility_bill.id, (
+    assert results_no_rerank[0].item.document_id == utility_bill.id, (
         "Utility bill should rank first without reranking"
     )
-    assert results_with_rerank[0].chunk.document_id == utility_bill.id, (
+    assert results_with_rerank[0].item.document_id == utility_bill.id, (
         "Utility bill should rank first with reranking"
     )
 
     # 7. Verify scores are different (reranking changes the scoring)
     # The score without reranking is cosine similarity (typically -1 to 1)
     # The score with reranking is cross-encoder logits (unbounded)
-    cosine_score = results_no_rerank[0].score
-    reranked_score = results_with_rerank[0].score
+    cosine_score = results_no_rerank[0].value
+    reranked_score = results_with_rerank[0].value
 
     # Scores should be different due to different scoring methods
     assert cosine_score != reranked_score, (
@@ -298,4 +298,4 @@ async def test_search_returns_relevant_document(
 
     # All results should have positive scores (RRF scores)
     for result in results:
-        assert result.score > 0, f"Result with score {result.score} should be positive"
+        assert result.value > 0, f"Result with score {result.value} should be positive"

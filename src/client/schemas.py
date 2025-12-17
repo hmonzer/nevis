@@ -86,13 +86,13 @@ class SearchResultResponse(BaseModel):
     """
     Response schema for a unified search result.
 
-    Can contain either a Client or Document entity with its relevance score and rank.
+    Can contain either a Client or Document entity with its relevance score.
+    Results are sorted by score descending.
     """
     type: SearchResultTypeEnum = Field(..., description="Type of entity in the result")
     entity: Union[ClientResponse, DocumentResponse] = Field(
         ..., description="The matched entity (Client or Document)"
     )
     score: float = Field(..., description="Relevance score (higher is more relevant)")
-    rank: int = Field(..., ge=1, description="Rank position in the result set (1-based)")
 
     model_config = {"from_attributes": True}

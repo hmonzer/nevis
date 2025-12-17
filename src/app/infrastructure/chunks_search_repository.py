@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import select, func
 
-from src.app.core.domain.models import ChunkSearchResult, DocumentChunk
+from src.app.core.domain.models import DocumentChunk, ScoredResult, Score, ScoreSource
 from src.shared.database.base_repo import BaseRepository
 from src.shared.database.database import Database
 from src.app.infrastructure.entities.document_entity import DocumentChunkEntity
@@ -27,7 +27,7 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
         query_vector: list[float],
         limit: int = 10,
         similarity_threshold: Optional[float] = None
-    ) -> list[ChunkSearchResult]:
+    ) -> list[ScoredResult[DocumentChunk]]:
         """
         Search for document chunks similar to the query vector.
 
@@ -41,7 +41,7 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
                                 If provided, only results with score >= threshold are returned.
 
         Returns:
-            List of ChunkSearchResult objects containing chunks and their similarity scores,
+            List of ScoredResult[DocumentChunk] with VECTOR_SIMILARITY source,
             ordered by score descending (most similar first)
 
         Raises:
@@ -74,13 +74,19 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
         )
 
         results = await self._search_with_scores(query)
-        return [ChunkSearchResult(chunk=chunk, score=score) for chunk, score in results]
+        return [
+            ScoredResult(
+                item=chunk,
+                score=Score(value=score, source=ScoreSource.VECTOR_SIMILARITY)
+            )
+            for chunk, score in results
+        ]
 
     async def search_by_keyword(
         self,
         query_text: str,
         limit: int = 10
-    ) -> list[ChunkSearchResult]:
+    ) -> list[ScoredResult[DocumentChunk]]:
         """
         Search for document chunks using full-text keyword search.
 
@@ -93,7 +99,7 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
             limit: Maximum number of results to return (default: 10)
 
         Returns:
-            List of ChunkSearchResult objects containing chunks and their relevance scores,
+            List of ScoredResult[DocumentChunk] with KEYWORD_RANK source,
             ordered by score descending (most relevant first)
 
         Raises:
@@ -122,7 +128,13 @@ class ChunksRepositorySearch(BaseRepository[DocumentChunkEntity, DocumentChunk])
         )
 
         results = await self._search_with_scores(query)
-        return [ChunkSearchResult(chunk=chunk, score=score) for chunk, score in results]
+        return [
+            ScoredResult(
+                item=chunk,
+                score=Score(value=score, source=ScoreSource.KEYWORD_RANK)
+            )
+            for chunk, score in results
+        ]
 
     @staticmethod
     async def _generate_words_for_querying(query_text):

@@ -4,9 +4,12 @@ from uuid import uuid4
 
 import pytest
 
+from src.app.config import ChunkSearchSettings
 from src.app.core.domain.models import (
     DocumentChunk,
-    ChunkSearchResult,
+    ScoredResult,
+    Score,
+    ScoreSource,
     SearchRequest,
 )
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
@@ -14,6 +17,11 @@ from src.app.core.services.embedding import EmbeddingService, EmbeddingVectorRes
 from src.app.core.services.reranker import RerankerService
 from src.app.core.services.rrf import ReciprocalRankFusion
 from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
+
+
+def create_chunk_settings(reranker_score_threshold: float = 0.0) -> ChunkSearchSettings:
+    """Create chunk search settings with custom threshold."""
+    return ChunkSearchSettings(reranker_score_threshold=reranker_score_threshold)
 
 
 # =============================================================================
@@ -52,17 +60,29 @@ def mock_reranker_service():
     return service
 
 
-def create_chunk_result(score: float, content: str = "Test content") -> ChunkSearchResult:
-    """Helper to create a ChunkSearchResult with given score."""
-    return ChunkSearchResult(
-        chunk=DocumentChunk(
+def create_chunk_result(score: float, content: str = "Test content", source: ScoreSource = ScoreSource.RRF_FUSION) -> ScoredResult[DocumentChunk]:
+    """Helper to create a ScoredResult[DocumentChunk] with given score."""
+    return ScoredResult(
+        item=DocumentChunk(
             id=uuid4(),
             document_id=uuid4(),
             chunk_index=0,
             chunk_content=content
         ),
-        score=score
+        score=Score(value=score, source=source)
     )
+
+
+def to_reranked_results(results: list[ScoredResult[DocumentChunk]]) -> list[ScoredResult[DocumentChunk]]:
+    """Convert RRF scored results to cross-encoder scored results for mocking reranker output."""
+    return [
+        ScoredResult(
+            item=r.item,
+            score=Score(value=r.value, source=ScoreSource.CROSS_ENCODER),
+            score_history=[r.score]  # Preserve original score in history
+        )
+        for r in results
+    ]
 
 
 # =============================================================================
@@ -82,8 +102,8 @@ async def test_filtering_applied_when_reranker_enabled(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=0.0),
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=0.0
     )
 
     # Mock search results - mix of positive and negative scores (cross-encoder logits)
@@ -99,8 +119,8 @@ async def test_filtering_applied_when_reranker_enabled(
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
 
-    # Reranker returns same results (scores already set)
-    mock_reranker_service.rerank.return_value = fused_results
+    # Reranker returns ScoredResult objects with cross-encoder scores
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -108,8 +128,8 @@ async def test_filtering_applied_when_reranker_enabled(
 
     # Assert - Only results with score >= 0.0 should remain
     assert len(results) == 2
-    assert results[0].score == 4.5
-    assert results[1].score == 1.2
+    assert results[0].value == 4.5
+    assert results[1].value == 1.2
 
 
 @pytest.mark.asyncio
@@ -124,8 +144,8 @@ async def test_filtering_not_applied_when_reranker_disabled(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=0.0),
         reranker_service=None,  # No reranker
-        reranker_score_threshold=0.0
     )
 
     # Mock RRF results - these are RRF scores (0-1 range), not cross-encoder logits
@@ -161,8 +181,8 @@ async def test_filtering_with_negative_threshold(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=-3.0),  # Include borderline results
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=-3.0  # Include borderline results
     )
 
     # Mock search results
@@ -177,7 +197,7 @@ async def test_filtering_with_negative_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -185,9 +205,9 @@ async def test_filtering_with_negative_threshold(
 
     # Assert - Results with score >= -3.0 should remain
     assert len(results) == 3
-    assert results[0].score == 4.5
-    assert results[1].score == 1.2
-    assert results[2].score == -2.5
+    assert results[0].value == 4.5
+    assert results[1].value == 1.2
+    assert results[2].value == -2.5
 
 
 @pytest.mark.asyncio
@@ -203,8 +223,8 @@ async def test_filtering_with_strict_positive_threshold(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=2.0),  # Only highly relevant results
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=2.0  # Only highly relevant results
     )
 
     # Mock search results
@@ -219,7 +239,7 @@ async def test_filtering_with_strict_positive_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -227,8 +247,8 @@ async def test_filtering_with_strict_positive_threshold(
 
     # Assert - Only results with score >= 2.0 should remain
     assert len(results) == 2
-    assert results[0].score == 4.5
-    assert results[1].score == 2.5
+    assert results[0].value == 4.5
+    assert results[1].value == 2.5
 
 
 @pytest.mark.asyncio
@@ -244,8 +264,8 @@ async def test_filtering_all_results_below_threshold(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=5.0),  # Very strict
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=5.0  # Very strict
     )
 
     # Mock search results - all below threshold
@@ -258,7 +278,7 @@ async def test_filtering_all_results_below_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -281,8 +301,8 @@ async def test_filtering_preserves_order(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=0.0),
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=0.0
     )
 
     # Mock results in descending score order
@@ -298,7 +318,7 @@ async def test_filtering_preserves_order(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -306,10 +326,10 @@ async def test_filtering_preserves_order(
 
     # Assert - Order should be preserved (as returned by reranker)
     assert len(results) == 4
-    assert results[0].score == 8.0
-    assert results[1].score == 5.0
-    assert results[2].score == 2.0
-    assert results[3].score == 0.5
+    assert results[0].value == 8.0
+    assert results[1].value == 5.0
+    assert results[2].value == 2.0
+    assert results[3].value == 0.5
 
 
 @pytest.mark.asyncio
@@ -325,8 +345,8 @@ async def test_filtering_with_exact_threshold_value(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=create_chunk_settings(reranker_score_threshold=0.0),
         reranker_service=mock_reranker_service,
-        reranker_score_threshold=0.0
     )
 
     # Mock results with exact threshold value
@@ -339,7 +359,7 @@ async def test_filtering_with_exact_threshold_value(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_reranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -347,26 +367,26 @@ async def test_filtering_with_exact_threshold_value(
 
     # Assert - Results at exactly the threshold should be included
     assert len(results) == 2
-    assert results[0].score == 1.0
-    assert results[1].score == 0.0
+    assert results[0].value == 1.0
+    assert results[1].value == 0.0
 
 
 @pytest.mark.asyncio
-async def test_default_threshold_is_zero(
+async def test_default_chunk_settings_threshold(
     mock_embedding_service,
     mock_search_repository,
     mock_rrf,
     mock_reranker_service,
 ):
-    """Test that default threshold is 0.0 if not specified."""
-    # Arrange - Create service without specifying threshold
+    """Test that default ChunkSearchSettings threshold is 2.0."""
+    # Arrange - Create service with default settings
     service = DocumentChunkSearchService(
         embedding_service=mock_embedding_service,
         search_repository=mock_search_repository,
         rrf=mock_rrf,
+        settings=ChunkSearchSettings(),  # Use defaults
         reranker_service=mock_reranker_service,
-        # reranker_score_threshold not specified - should default to 0.0
     )
 
-    # Assert default value
-    assert service.reranker_score_threshold == 0.0
+    # Assert default value from ChunkSearchSettings
+    assert service.settings.reranker_score_threshold == 2.0

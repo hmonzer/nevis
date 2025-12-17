@@ -6,9 +6,15 @@ merging and ranking results from different search services.
 """
 import asyncio
 import logging
-from typing import Any, cast
+from typing import cast
 
-from src.app.core.domain.models import SearchRequest, SearchResult, ClientSearchResult, DocumentSearchResult
+from src.app.core.domain.models import (
+    Client,
+    Document,
+    ScoredResult,
+    SearchRequest,
+    SearchResult,
+)
 from src.app.core.services.client_search_service import ClientSearchService
 from src.app.core.services.document_search_service import DocumentSearchService
 
@@ -64,18 +70,18 @@ class SearchService:
             return_exceptions=True,
         )
 
-        # Handle exceptions from either service and ensure we have lists
-        client_results: list[ClientSearchResult] = []
+        # Handle exceptions from either service
+        client_results: list[ScoredResult[Client]] = []
         if isinstance(client_results_raw, Exception):
             logger.error("Client search failed: %s", client_results_raw)
         else:
-            client_results = cast(list[ClientSearchResult], client_results_raw)
+            client_results = cast(list[ScoredResult[Client]], client_results_raw)
 
-        document_results: list[DocumentSearchResult] = []
+        document_results: list[ScoredResult[Document]] = []
         if isinstance(document_results_raw, Exception):
             logger.error("Document search failed: %s", document_results_raw)
         else:
-            document_results = cast(list[DocumentSearchResult], document_results_raw)
+            document_results = cast(list[ScoredResult[Document]], document_results_raw)
 
         logger.info(
             "Retrieved %d clients and %d documents",
@@ -83,32 +89,24 @@ class SearchService:
             len(document_results),
         )
 
-        # Collect all results with their metadata
-        all_results: list[tuple[str, Any, float]] = []
-
-        for client_result in client_results:
-            all_results.append(("CLIENT", client_result.client, client_result.score))
-
-        for doc_result in document_results:
-            all_results.append(("DOCUMENT", doc_result.document, doc_result.score))
-
-        # Sort by score descending
-        all_results.sort(key=lambda x: x[2], reverse=True)
-
-        # Limit to top_k results
-        all_results = all_results[: request.top_k]
-
-        # Create SearchResult objects with proper ranks (1-based)
+        # Build unified results from both sources
         unified_results: list[SearchResult] = []
-        for idx, (entity_type, entity, score) in enumerate(all_results, start=1):
-            unified_results.append(
-                SearchResult(
-                    type=entity_type,  # type: ignore
-                    entity=entity,
-                    score=score,
-                    rank=idx,
-                )
-            )
+        for result in client_results:
+            unified_results.append(SearchResult(
+                type="CLIENT",
+                entity=result.item,
+                score=result.value,
+            ))
+        for result in document_results:
+            unified_results.append(SearchResult(
+                type="DOCUMENT",
+                entity=result.item,
+                score=result.value,
+            ))
+
+        # Sort by score descending and take top_k
+        unified_results.sort(key=lambda r: r.score, reverse=True)
+        unified_results = unified_results[:request.top_k]
 
         logger.info(
             "Returning %d unified results (top_k=%d)", len(unified_results), request.top_k

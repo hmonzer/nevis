@@ -2,7 +2,7 @@
 import logging
 from uuid import UUID
 
-from src.app.core.domain.models import DocumentSearchResult, SearchRequest
+from src.app.core.domain.models import Document, ScoredResult, Score, SearchRequest, DocumentChunk
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.infrastructure.document_repository import DocumentRepository
 
@@ -16,6 +16,8 @@ class DocumentSearchService:
     This service aggregates chunk-level search results to return document-level results.
     It uses the chunk search service to find relevant chunks, then groups them by document
     and assigns each document the highest relevance score from its matching chunks.
+
+    Returns ScoredResult[Document] preserving the score from the best-matching chunk.
     """
 
     def __init__(
@@ -40,7 +42,7 @@ class DocumentSearchService:
     async def search(
         self,
         request: SearchRequest
-    ) -> list[DocumentSearchResult]:
+    ) -> list[ScoredResult[Document]]:
         """
         Search for documents semantically similar to the query.
 
@@ -55,8 +57,8 @@ class DocumentSearchService:
                     Validation is handled by the SearchRequest model.
 
         Returns:
-            List of DocumentSearchResult objects containing documents and their relevance scores,
-            ordered by score descending (most relevant first)
+            List of ScoredResult[Document] preserving the score and source
+            from the best-matching chunk for each document.
         """
         logger.info("Searching for documents matching query: '%s' (top_k=%d)", request.query[:100], request.top_k)
 
@@ -75,20 +77,21 @@ class DocumentSearchService:
             logger.info("No chunks found matching query")
             return []
 
-        # Group chunks by document ID and track highest score
-        document_scores: dict[UUID, float] = {}
+        # Group chunks by document ID and track best score (with source)
+        best_chunk_scores: dict[UUID, ScoredResult[DocumentChunk]] = {}
         for chunk_result in chunk_results:
-            doc_id = chunk_result.chunk.document_id
-            current_score = document_scores.get(doc_id, float('-inf'))
-            # Keep the highest score for this document
-            document_scores[doc_id] = max(current_score, chunk_result.score)
+            doc_id = chunk_result.item.document_id
+            current_best = best_chunk_scores.get(doc_id)
+            # Keep the chunk result with the highest score for this document
+            if current_best is None or chunk_result.value > current_best.value:
+                best_chunk_scores[doc_id] = chunk_result
 
-        logger.info("Found %d unique documents from chunks", len(document_scores))
+        logger.info("Found %d unique documents from chunks", len(best_chunk_scores))
 
         # Sort documents by score (descending) and take top_k
         sorted_doc_ids = sorted(
-            document_scores.keys(),
-            key=lambda doc_id: document_scores[doc_id],
+            best_chunk_scores.keys(),
+            key=lambda doc_id: best_chunk_scores[doc_id].value,
             reverse=True
         )[:request.top_k]
 
@@ -99,13 +102,16 @@ class DocumentSearchService:
         doc_map = {doc.id: doc for doc in documents}
 
         # Build results maintaining the sort order
-        results = []
+        # Use the score and source from the best-matching chunk
+        results: list[ScoredResult[Document]] = []
         for doc_id in sorted_doc_ids:
             document = doc_map.get(doc_id)
-            if document:
-                results.append(DocumentSearchResult(
-                    document=document,
-                    score=document_scores[doc_id]
+            if document is not None:
+                best_chunk = best_chunk_scores[doc_id]
+                results.append(ScoredResult(
+                    item=document,
+                    score=Score(value=best_chunk.value, source=best_chunk.source),
+                    score_history=best_chunk.score_history  # Preserve history from best chunk
                 ))
             else:
                 logger.warning("Document %s not found in repository", doc_id)

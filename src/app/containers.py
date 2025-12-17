@@ -369,11 +369,8 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         search_repository=chunks_search_repository,
         rrf=rrf,
+        settings=config.provided.chunk_search,
         reranker_service=reranker_service,
-        reranker_score_threshold=config.provided.reranker.score_threshold,
-        vector_similarity_threshold=config.provided.chunk_search.vector_similarity_threshold,
-        retrieval_multiplier_with_rerank=config.provided.chunk_search.retrieval_multiplier_with_rerank,
-        retrieval_multiplier_no_rerank=config.provided.chunk_search.retrieval_multiplier_no_rerank,
     )
 
     # Variant without reranking (for testing/comparison)
@@ -382,10 +379,8 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
         search_repository=chunks_search_repository,
         rrf=rrf,
+        settings=config.provided.chunk_search,
         reranker_service=None,
-        vector_similarity_threshold=config.provided.chunk_search.vector_similarity_threshold,
-        retrieval_multiplier_with_rerank=config.provided.chunk_search.retrieval_multiplier_with_rerank,
-        retrieval_multiplier_no_rerank=config.provided.chunk_search.retrieval_multiplier_no_rerank,
     )
 
     document_search_service = providers.Factory(
@@ -406,7 +401,16 @@ class Container(containers.DeclarativeContainer):
     client_search_service = providers.Factory(
         ClientSearchService,
         search_repository=client_search_repository,
-        pg_trgm_threshold=config.provided.client_search.trgm_threshold,
+        settings=config.provided.client_search,
+        reranker_service=reranker_service,
+    )
+
+    # Variant without reranking (for testing/comparison)
+    client_search_service_no_rerank = providers.Factory(
+        ClientSearchService,
+        search_repository=client_search_repository,
+        settings=config.provided.client_search,
+        reranker_service=None,
     )
 
     search_service = providers.Factory(
@@ -418,6 +422,6 @@ class Container(containers.DeclarativeContainer):
     # Variant without reranking (for testing/comparison)
     search_service_no_rerank = providers.Factory(
         SearchService,
-        client_search_service=client_search_service,
+        client_search_service=client_search_service_no_rerank,
         document_search_service=document_search_service_no_rerank,
     )

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Union
+from typing import Generic, Literal, TypeVar, Union
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -62,48 +62,129 @@ class DocumentChunk(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ChunkSearchResult(BaseModel):
+# =============================================================================
+# Unified Scoring Types
+# =============================================================================
+
+class ScoreSource(StrEnum):
     """
-    Domain model representing a document chunk search result with relevance score.
+    Origin of a relevance score for interpretability and debugging.
 
-    This model pairs a DocumentChunk with its similarity/relevance score.
-    The score can come from different sources:
-    - Cosine similarity: typically in range [-1.0, 1.0]
-    - CrossEncoder reranking: unbounded logits (any real number)
-
-    Higher scores always indicate higher relevance, regardless of source.
+    Each source has a different score range and semantic meaning:
+    - VECTOR_SIMILARITY: Cosine similarity [-1.0, 1.0]
+    - KEYWORD_RANK: PostgreSQL ts_rank [0, unbounded]
+    - TRIGRAM_SIMILARITY: pg_trgm similarity [0.0, 1.0]
+    - RRF_FUSION: Reciprocal Rank Fusion score [small positive floats]
+    - CROSS_ENCODER: CrossEncoder logits [~-12, +12], 0 = 50% relevance
     """
-    chunk: DocumentChunk = Field(..., description="The document chunk that matched the search")
-    score: float = Field(..., description="Relevance score (higher is more relevant). Range depends on scoring method.")
+    VECTOR_SIMILARITY = "vector_similarity"
+    KEYWORD_RANK = "keyword_rank"
+    TRIGRAM_SIMILARITY = "trigram_similarity"
+    RRF_FUSION = "rrf_fusion"
+    CROSS_ENCODER = "cross_encoder"
 
-    model_config = {"from_attributes": True}
+    def of(self, value: float) -> "Score":
+        return Score(value=value, source=self)
 
 
-class ClientSearchResult(BaseModel):
+class Score(BaseModel):
     """
-    Domain model representing a client search result with relevance score.
+    A relevance score with its source/origin.
 
-    This model pairs a Client with their fuzzy match similarity score from
-    PostgreSQL's pg_trgm extension, allowing search results to be ranked by relevance.
+    Encapsulates both the numeric value and where it came from,
+    enabling meaningful interpretation and debugging. Immutable
+    for safe use in score history tracking.
     """
-    client: Client = Field(..., description="The client that matched the search")
-    score: float = Field(..., ge=0.0, le=1.0, description="Similarity score (0.0 to 1.0, higher is more relevant)")
+    value: float = Field(..., description="The numeric score value")
+    source: ScoreSource = Field(..., description="Origin of this score")
 
-    model_config = {"from_attributes": True}
+    model_config = {"frozen": True}
+
+    def __repr__(self) -> str:
+        return f"Score({self.value:.4f}, {self.source.value})"
 
 
-class DocumentSearchResult(BaseModel):
+T = TypeVar("T")
+
+
+class ScoredResult(BaseModel, Generic[T]):
     """
-    Domain model representing a document search result with relevance score.
+    Universal wrapper for any entity with a relevance score and history.
 
-    This model aggregates chunk-level search results to the document level,
-    using the highest score among all matching chunks as the document's relevance score.
+    Same type throughout the entire retrieval pipeline. Tracks how the
+    score evolves through different stages (retrieval → fusion → reranking).
+
+    Example history for a chunk going through the pipeline:
+    1. Initial vector search: Score(0.85, VECTOR_SIMILARITY), history=[]
+    2. After RRF fusion: Score(0.032, RRF_FUSION), history=[Score(0.85, VECTOR_SIMILARITY)]
+    3. After reranking: Score(4.2, CROSS_ENCODER), history=[..., Score(0.032, RRF_FUSION)]
+
+    Attributes:
+        item: The entity being scored (DocumentChunk, Client, Document, etc.)
+        score: Current relevance score with source metadata
+        score_history: Previous scores in chronological order (oldest first)
     """
-    document: Document = Field(..., description="The document that matched the search")
-    score: float = Field(..., description="Relevance score (higher is more relevant). Highest score from matching chunks.")
+    item: T
+    score: Score = Field(..., description="Current score with source")
+    score_history: list[Score] = Field(
+        default_factory=list,
+        description="Previous scores in chronological order (oldest first)"
+    )
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "arbitrary_types_allowed": True}
 
+    def assign_score(self, new_score: Score) -> "ScoredResult[T]":
+        """
+        Assign a new score, preserving the current score in history.
+
+        This enables middleware pattern while tracking score evolution:
+        - Current score moves to end of score_history
+        - New score becomes the current score
+        - Returns new immutable ScoredResult (does not mutate self)
+
+        Args:
+            new_score: The new Score to assign
+
+        Returns:
+            New ScoredResult with updated score and preserved history
+        """
+        return ScoredResult(
+            item=self.item,
+            score=new_score,
+            score_history=[*self.score_history, self.score]
+        )
+
+    @property
+    def value(self) -> float:
+        """Convenience accessor for current score value."""
+        return self.score.value
+
+    @property
+    def source(self) -> ScoreSource:
+        """Convenience accessor for current score source."""
+        return self.score.source
+
+    @staticmethod
+    def filter_by_threshold(
+        results: list["ScoredResult[T]"],
+        threshold: float
+    ) -> list["ScoredResult[T]"]:
+        """
+        Filter results below a score threshold.
+
+        Args:
+            results: List of ScoredResult to filter
+            threshold: Minimum score value (inclusive)
+
+        Returns:
+            Filtered list with only results where score.value >= threshold
+        """
+        return [r for r in results if r.value >= threshold]
+
+
+# =============================================================================
+# Search Request Model
+# =============================================================================
 
 class SearchRequest(BaseModel):
     """
@@ -129,11 +210,10 @@ class SearchResult(BaseModel):
     Unified search result that can contain either a Client or Document.
 
     Used by the unified SearchService to return heterogeneous search results
-    with consistent ranking and scoring.
+    sorted by score descending.
     """
     type: Literal["CLIENT", "DOCUMENT"] = Field(..., description="Type of entity in the result")
     entity: Union[Client, Document] = Field(..., description="The actual entity (Client or Document)")
     score: float = Field(..., description="Relevance score from the search")
-    rank: int = Field(..., ge=1, description="Rank position in the result set (1-based)")
 
     model_config = {"from_attributes": True}

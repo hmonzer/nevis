@@ -96,16 +96,16 @@ async def test_search_by_vector_returns_similar_chunks(chunk_search_repository, 
 
     # Assert - Results should be ordered by similarity (chunk2, chunk3, chunk1)
     assert len(results) == 3
-    assert results[0].chunk.id == chunk2.id  # Most similar
-    assert results[1].chunk.id == chunk3.id  # Medium similarity
-    assert results[2].chunk.id == chunk1.id  # Least similar
+    assert results[0].item.id == chunk2.id  # Most similar
+    assert results[1].item.id == chunk3.id  # Medium similarity
+    assert results[2].item.id == chunk1.id  # Least similar
 
     # Verify scores are in descending order
-    assert results[0].score > results[1].score > results[2].score
+    assert results[0].value > results[1].value > results[2].value
 
     # Verify scores are in valid range for cosine similarity [-1.0, 1.0]
     for result in results:
-        assert -1.0 <= result.score <= 1.0, "Cosine similarity scores should be in range [-1.0, 1.0]"
+        assert -1.0 <= result.value <= 1.0, "Cosine similarity scores should be in range [-1.0, 1.0]"
 
 
 @pytest.mark.asyncio
@@ -207,8 +207,8 @@ async def test_search_by_vector_with_similarity_threshold(chunk_search_repositor
 
     # Assert - Should only return the high similarity chunk
     assert len(results) == 1
-    assert results[0].chunk.id == high_sim_chunk.id
-    assert results[0].score >= 0.5
+    assert results[0].item.id == high_sim_chunk.id
+    assert results[0].value >= 0.5
 
 
 @pytest.mark.asyncio
@@ -260,7 +260,7 @@ async def test_search_by_vector_excludes_chunks_without_embeddings(chunk_search_
 
     # Assert - Should only return the chunk with embedding
     assert len(results) == 1
-    assert results[0].chunk.id == chunk_with_embedding.id
+    assert results[0].item.id == chunk_with_embedding.id
 
 
 @pytest.mark.asyncio
@@ -350,14 +350,14 @@ async def test_search_by_keyword_returns_matching_chunks(chunk_search_repository
 
     # Assert - Should return chunks containing "fox"
     assert len(results) == 2
-    result_ids = {r.chunk.id for r in results}
+    result_ids = {r.item.id for r in results}
     assert chunk1.id in result_ids
     assert chunk3.id in result_ids
     assert chunk2.id not in result_ids  # Doesn't contain "fox"
 
     # Verify scores are positive
     for result in results:
-        assert result.score > 0
+        assert result.value > 0
 
 
 @pytest.mark.asyncio
@@ -496,7 +496,7 @@ async def test_search_by_keyword_handles_multiple_words(chunk_search_repository,
 
     # Assert - Should return chunk containing both terms
     assert len(results) >= 1
-    assert any(r.chunk.id == chunk1.id for r in results)
+    assert any(r.item.id == chunk1.id for r in results)
 
 
 @pytest.mark.asyncio
@@ -548,4 +548,4 @@ async def test_search_by_keyword_ranks_by_relevance(chunk_search_repository, uni
     # Assert - Higher relevance chunk should have higher score
     assert len(results) == 2
     # Results should be ordered by score descending
-    assert results[0].score >= results[1].score
+    assert results[0].value >= results[1].value

@@ -1,7 +1,7 @@
 """Repository for client fuzzy search operations."""
 from sqlalchemy import select, func, or_, case
 
-from src.app.core.domain.models import Client, ClientSearchResult
+from src.app.core.domain.models import Client, ScoredResult, Score, ScoreSource
 from src.shared.database.base_repo import BaseRepository
 from src.shared.database.database import Database
 from src.app.infrastructure.entities.client_entity import ClientEntity
@@ -19,7 +19,7 @@ class ClientSearchRepository(BaseRepository[ClientEntity, Client]):
     def __init__(self, db: Database, mapper: ClientMapper):
         super().__init__(db, mapper)
 
-    async def search(self, query: str, threshold: float = 0.1, limit: int | None = None) -> list[ClientSearchResult]:
+    async def search(self, query: str, threshold: float = 0.1, limit: int | None = None) -> list[ScoredResult[Client]]:
         """
         Search for clients using fuzzy matching across email, first name, last name, and description.
 
@@ -36,7 +36,8 @@ class ClientSearchRepository(BaseRepository[ClientEntity, Client]):
             limit: Maximum number of results to return. If None, returns all matching results.
 
         Returns:
-            List of ClientSearchResult objects ordered by relevance (highest similarity first)
+            List of ScoredResult[Client] with TRIGRAM_SIMILARITY source,
+            ordered by relevance (highest similarity first)
 
         Raises:
             ValueError: If query is empty or threshold is out of range
@@ -84,4 +85,10 @@ class ClientSearchRepository(BaseRepository[ClientEntity, Client]):
             stmt = stmt.limit(limit)
 
         results = await self._search_with_scores(stmt)
-        return [ClientSearchResult(client=client, score=score) for client, score in results]
+        return [
+            ScoredResult(
+                item=client,
+                score=Score(value=score, source=ScoreSource.TRIGRAM_SIMILARITY)
+            )
+            for client, score in results
+        ]
