@@ -70,39 +70,30 @@ class SearchService:
             return_exceptions=True,
         )
 
+        # Build unified results from both sources
+        unified_results: list[SearchResult] = []
+
         # Handle exceptions from either service
-        client_results: list[ScoredResult[Client]] = []
         if isinstance(client_results_raw, Exception):
             logger.error("Client search failed: %s", client_results_raw)
         else:
             client_results = cast(list[ScoredResult[Client]], client_results_raw)
-
-        document_results: list[ScoredResult[Document]] = []
+            for result in client_results:
+                unified_results.append(SearchResult(
+                    type="CLIENT",
+                    entity=result.item,
+                    score=result.value,
+                ))
         if isinstance(document_results_raw, Exception):
             logger.error("Document search failed: %s", document_results_raw)
         else:
             document_results = cast(list[ScoredResult[Document]], document_results_raw)
-
-        logger.info(
-            "Retrieved %d clients and %d documents",
-            len(client_results),
-            len(document_results),
-        )
-
-        # Build unified results from both sources
-        unified_results: list[SearchResult] = []
-        for result in client_results:
-            unified_results.append(SearchResult(
-                type="CLIENT",
-                entity=result.item,
-                score=result.value,
-            ))
-        for result in document_results:
-            unified_results.append(SearchResult(
-                type="DOCUMENT",
-                entity=result.item,
-                score=result.value,
-            ))
+            for result in document_results:
+                unified_results.append(SearchResult(
+                    type="DOCUMENT",
+                    entity=result.item,
+                    score=result.value,
+                ))
 
         # Sort by score descending and take top_k
         unified_results.sort(key=lambda r: r.score, reverse=True)
