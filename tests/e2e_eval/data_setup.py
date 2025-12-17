@@ -5,10 +5,8 @@ from pathlib import Path
 from typing import Dict
 from uuid import UUID
 
-from src.app.core.domain.models import DocumentStatus
-from src.app.infrastructure.document_repository import DocumentRepository
 from src.client.nevis_client import NevisClient
-from src.client.schemas import CreateClientRequest, CreateDocumentRequest
+from src.client.schemas import CreateClientRequest, CreateDocumentRequest, DocumentStatusEnum
 from tests.e2e_eval.schema import EvalSuite
 
 logger = logging.getLogger(__name__)
@@ -19,57 +17,68 @@ def load_eval_suite(file_path: Path) -> EvalSuite:
     return EvalSuite(**data)
 
 async def wait_for_documents_processing(
-    document_repository: DocumentRepository,
-    document_ids: list[UUID],
+    nevis_client: NevisClient,
+    client_ids: list[UUID],
+    expected_doc_count: int,
     timeout_sec: int = 30
 ) -> None:
     """
-    Wait for all documents to be processed using batch fetching.
+    Wait for all documents to be processed by polling via the API.
 
-    Uses the repository's batch fetch method for efficient status checking,
-    reducing N API calls to a single database query per poll iteration.
+    Uses the nevis_client to list documents for each client and check their status.
+    This allows the evaluation to run against any remote Nevis API instance.
 
     Args:
-        document_repository: Repository for batch document fetching
-        document_ids: List of document IDs to wait for
+        nevis_client: API client for fetching documents
+        client_ids: List of client IDs whose documents to check
+        expected_doc_count: Total number of documents expected across all clients
         timeout_sec: Maximum time to wait for all documents
 
     Raises:
         RuntimeError: If any document fails processing or timeout is reached
     """
-    if not document_ids:
+    if not client_ids or expected_doc_count == 0:
         return
 
-    for attempt in range(timeout_sec * 5):  # Check every 0.2s
-        # Batch fetch all documents in a single query
-        documents = await document_repository.get_by_ids(document_ids)
+    poll_interval = 0.5  # seconds between polls
+    max_attempts = int(timeout_sec / poll_interval)
 
-        # Check if we got all documents
-        if len(documents) != len(document_ids):
-            missing_ids = set(document_ids) - {doc.id for doc in documents}
-            logger.warning(f"Some documents not found: {missing_ids}")
+    for attempt in range(max_attempts):
+        all_documents = []
+
+        # Fetch documents for all clients
+        for client_id in client_ids:
+            try:
+                docs = await nevis_client.list_documents(client_id)
+                all_documents.extend(docs)
+            except Exception as e:
+                logger.warning(f"Error fetching documents for client {client_id}: {e}")
+
+        # Check if we have all expected documents
+        if len(all_documents) < expected_doc_count:
+            await asyncio.sleep(poll_interval)
+            continue
 
         # Check status of all documents
         all_processed = True
-        for doc in documents:
-            if doc.status == DocumentStatus.FAILED:
-                raise RuntimeError(f"Document {doc.id} processing failed.")
-            if doc.status != DocumentStatus.PROCESSED:
+        for doc in all_documents:
+            if doc.status == DocumentStatusEnum.FAILED:
+                raise RuntimeError(f"Document {doc.id} ({doc.title}) processing failed.")
+            if doc.status != DocumentStatusEnum.PROCESSED:
                 all_processed = False
                 break
 
-        if all_processed and len(documents) == len(document_ids):
-            logger.info(f"✅ All {len(document_ids)} documents processed successfully")
+        if all_processed:
+            logger.info(f"✅ All {len(all_documents)} documents processed successfully")
             return
 
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(poll_interval)
 
     raise RuntimeError(f"Document processing timed out after {timeout_sec}s")
 
 async def setup_corpus(
     suite: EvalSuite,
-    client_api: NevisClient,
-    document_repository: DocumentRepository
+    nevis_client: NevisClient,
 ) -> Dict[str, UUID]:
     """
     Populates the database and S3 with the entire corpus using the API.
@@ -78,8 +87,7 @@ async def setup_corpus(
 
     Args:
         suite: Evaluation suite containing corpus data
-        client_api: API client for creating clients and documents
-        document_repository: Repository for efficient batch status checking
+        nevis_client: API client for creating clients and documents
 
     Returns:
         A mapping of {json_id: real_system_id} for both clients and documents.
@@ -97,14 +105,16 @@ async def setup_corpus(
             email=client_record.email,
             description=client_record.description
         )
-        client_tasks.append(client_api.create_client(request))
+        client_tasks.append(nevis_client.create_client(request))
 
     # Execute all client creations in parallel
     client_responses = await asyncio.gather(*client_tasks)
 
-    # Map IDs
+    # Map IDs and collect client UUIDs for later polling
+    created_client_ids: list[UUID] = []
     for client_record, response in zip(suite.corpus.clients, client_responses):
         id_map[client_record.id] = response.id
+        created_client_ids.append(response.id)
         logger.info(f"Created client {response.email} with ID {response.id} (mapped from {client_record.id})")
 
     # 2. Create all Documents IN PARALLEL (without waiting for processing)
@@ -124,7 +134,7 @@ async def setup_corpus(
             content=doc_record.content
         )
 
-        document_tasks.append(client_api.upload_document(real_client_id, request))
+        document_tasks.append(nevis_client.upload_document(real_client_id, request))
         document_metadata.append((doc_record, real_client_id))
 
     # Execute all document creations in parallel
@@ -135,11 +145,15 @@ async def setup_corpus(
         id_map[doc_record.id] = response.id
         logger.info(f"Created document '{response.title}' with ID {response.id} (mapped from {doc_record.id})")
 
-    # 3. Wait for ALL documents to be processed using batch repository fetch
+    # 3. Wait for ALL documents to be processed by polling via API
     logger.info(f"Waiting for {len(document_responses)} documents to be processed...")
 
-    document_ids = [resp.id for resp in document_responses]
-    await wait_for_documents_processing(document_repository, document_ids, timeout_sec=30)
+    await wait_for_documents_processing(
+        nevis_client=nevis_client,
+        client_ids=created_client_ids,
+        expected_doc_count=len(document_responses),
+        timeout_sec=60  # Larger documents may need more time
+    )
 
     logger.info(f"Corpus setup complete. Created {len(id_map)} total entities.")
     return id_map
