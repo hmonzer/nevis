@@ -23,7 +23,7 @@ class DocumentEntity(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     client_id: Mapped[UUID] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255))
-    s3_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    s3_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, values_callable=lambda x: [e.value for e in x]),
         default=DocumentStatus.PENDING,

@@ -23,8 +23,8 @@ DATA_DIR = Path(__file__).parent / "data"
 # Add new JSON files here to include them in the test suite
 EVAL_DATASETS = [
     "synthetic_wealth_data.json",
+    "synthetic_wealth_data_large.json",
     # Add more datasets here as they are created:
-    # "synthetic_wealth_data_large.json",
 ]
 
 
@@ -58,6 +58,7 @@ async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
     4. Compares search results against expected results using IR metrics
     5. Asserts that at least one use case succeeded
     """
+    # Setting log level to CRITICAL to avoid noise and have a clear summary of evals
     caplog.set_level(logging.CRITICAL)
 
     # Load the evaluation suite
