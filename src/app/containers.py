@@ -128,7 +128,7 @@ def create_text_splitter(
         tokenizer,  # type: ignore[arg-type]  # AutoTokenizer is compatible with PreTrainedTokenizerBase
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        separators=separators or ["\n\n", "\n", ". ", " ", ""],
+        separators=separators or ["\n", ". ", " ", ""],
     )
 
 
