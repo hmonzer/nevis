@@ -1,19 +1,18 @@
 """
 E2E evaluation tests for wealth manager search functionality.
 
-Uses the reusable evaluation_runner module which can also be invoked via CLI:
-    python -m tests.e2e_eval.run_eval --url http://localhost:8000
+Uses the src.eval module which can also be invoked via CLI:
+    python -m src.eval --url http://localhost:8000
 
 To run a specific evaluation dataset:
     pytest tests/e2e_eval/test_wealth_manager_eval.py -k "synthetic_wealth_data" -v -s
 """
-import logging
 from pathlib import Path
 
 import pytest
 
-from tests.e2e_eval.data_setup import load_eval_suite
-from tests.e2e_eval.evaluation_runner import run_evaluation, EvaluationConfig
+from src.eval import EvaluationConfig
+from src.eval.data_setup import load_eval_suite
 
 
 # Directory containing evaluation data files
@@ -39,7 +38,7 @@ def get_dataset_id(dataset_path: str) -> str:
     EVAL_DATASETS,
     ids=get_dataset_id,
 )
-async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
+async def test_wealth_manager_eval(eval_runner, dataset_file: str):
     """
     E2E evaluation of search API using synthetic wealth management data.
 
@@ -47,8 +46,7 @@ async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
     multiple evaluation sets to be tested with the same framework.
 
     Args:
-        caplog: pytest log capture fixture
-        nevis_client: Nevis API client fixture
+        eval_runner: EvalRunner fixture configured with test client
         dataset_file: Name of the JSON dataset file to evaluate
 
     The test:
@@ -58,9 +56,6 @@ async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
     4. Compares search results against expected results using IR metrics
     5. Asserts that at least one use case succeeded
     """
-    # Setting log level to CRITICAL to avoid noise and have a clear summary of evals
-    caplog.set_level(logging.CRITICAL)
-
     # Load the evaluation suite
     data_path = DATA_DIR / dataset_file
     if not data_path.exists():
@@ -68,9 +63,9 @@ async def test_wealth_manager_eval(caplog, nevis_client, dataset_file: str):
 
     suite = load_eval_suite(data_path)
 
-    # Run evaluation using the reusable runner
+    # Run evaluation using the eval runner fixture
     config = EvaluationConfig(top_k=5, verbose=True)
-    result = await run_evaluation(nevis_client, suite, config)
+    result = await eval_runner.run_suite(suite, config)
 
     # Assertions
     assert len(result.results) > 0, f"All use cases failed for {dataset_file} - no valid metrics collected"

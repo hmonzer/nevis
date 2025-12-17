@@ -161,7 +161,7 @@
         },
         {
           "query_id": "q_sterling_03",
-          "query_text": "Sterling crypto assets",
+          "query_text": "Sterling crypto (bitcoin) assets",
           "expected_result_ids": [
             "doc_sterling_email_crypto"
           ]

@@ -18,7 +18,8 @@ from testcontainers.postgres import PostgresContainer
 from src.app.containers import Container
 from src.app.main import create_app, default_lifespan
 from src.client import NevisClient
-from src.shared.blob_storage.s3_blober import S3BlobStorage, S3BlobStorageSettings
+from src.eval import EvalRunner
+from src.shared.blob_storage.s3_blober import S3BlobStorage
 from src.shared.database.database import Database, Base, DatabaseSettings
 from src.shared.database.unit_of_work import UnitOfWork
 
@@ -215,16 +216,13 @@ async def db(clean_database):
 # =============================================================================
 
 @pytest.fixture
-def s3_storage(s3_endpoint_url):
-    """Get S3 blob storage instance configured for LocalStack."""
-    settings = S3BlobStorageSettings(
-        bucket_name="test-documents",
-        endpoint_url=s3_endpoint_url,
-        region_name="us-east-1",
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-    )
-    return S3BlobStorage(settings)
+def s3_storage(test_container, test_app):
+    """
+    Get S3 blob storage instance from container.
+    Depends on test_app to ensure lifespan has run and bucket exists.
+    """
+    _ = test_app  # Ensure lifespan has created the bucket
+    return test_container.s3_storage()
 
 
 # =============================================================================
@@ -347,3 +345,13 @@ def text_splitter(test_container):
 def tokenizer_model(test_container):
     """Get the tokenizer model name from container config for custom chunking strategies."""
     return test_container.config().embedding.model_name
+
+
+# =============================================================================
+# Evaluation fixtures
+# =============================================================================
+
+@pytest.fixture
+def eval_runner(nevis_client) -> EvalRunner:
+    """Get an EvalRunner instance configured with the test client."""
+    return EvalRunner(nevis_client)

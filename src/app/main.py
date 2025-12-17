@@ -21,7 +21,7 @@ LifespanType = Callable[[FastAPI], AsyncIterator[None]]
 
 @asynccontextmanager
 async def default_lifespan(app: FastAPI):
-    """Default application lifespan manager - initializes database and loads models on startup."""
+    """Default application lifespan manager - initializes database, S3, and loads models on startup."""
     container: Container = app.state.container
     logger.info("Starting Nevis API...")
 
@@ -39,6 +39,11 @@ async def default_lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     logger.info("Database initialized successfully")
+
+    # Ensure S3 bucket exists on startup
+    s3_storage = container.s3_storage()
+    await s3_storage.ensure_bucket_exists()
+    logger.info("S3 bucket '%s' initialized successfully", s3_storage.settings.bucket_name)
 
     # Eagerly load ML models at startup to avoid cold-start latency on first request
     logger.info("Loading ML models...")
