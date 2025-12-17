@@ -120,11 +120,17 @@ class DocumentChunkSearchService:
         # Apply reranking if reranker is available
         if self.reranker_service and fused_results:
             logger.info("Applying reranking to %d candidates", len(fused_results))
-            results = await self.reranker_service.rerank(
-                request.query,
-                fused_results[:retrieval_limit],  # Limit candidates for reranking
+            ranked = await self.reranker_service.rerank(
+                query=request.query,
+                items=fused_results[:retrieval_limit],  # Limit candidates for reranking
+                content_extractor=lambda r: r.chunk.chunk_content,
                 top_k=request.top_k
             )
+            # Convert RankedResult back to ChunkSearchResult
+            results = [
+                ChunkSearchResult(chunk=r.item.chunk, score=r.score)
+                for r in ranked
+            ]
             logger.info("Reranking complete. Returning top %d results", len(results))
         else:
             # No reranker - just return top_k from fused results

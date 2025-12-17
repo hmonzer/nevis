@@ -26,9 +26,11 @@ class ClientSearchSettings(BaseModel):
 
     Trigram similarity scores range from 0 to 1.
     Higher threshold = stricter matching.
+    retrieval_multiplier: How many extra candidates to fetch when reranking is enabled.
     """
 
     trgm_threshold: float = 0.32
+    retrieval_multiplier: int = 3
 
 
 class ChunkSearchSettings(BaseModel):

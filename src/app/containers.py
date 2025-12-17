@@ -407,6 +407,17 @@ class Container(containers.DeclarativeContainer):
         ClientSearchService,
         search_repository=client_search_repository,
         pg_trgm_threshold=config.provided.client_search.trgm_threshold,
+        reranker_service=reranker_service,
+        reranker_score_threshold=config.provided.reranker.score_threshold,
+        retrieval_multiplier=config.provided.client_search.retrieval_multiplier,
+    )
+
+    # Variant without reranking (for testing/comparison)
+    client_search_service_no_rerank = providers.Factory(
+        ClientSearchService,
+        search_repository=client_search_repository,
+        pg_trgm_threshold=config.provided.client_search.trgm_threshold,
+        reranker_service=None,
     )
 
     search_service = providers.Factory(
@@ -418,6 +429,6 @@ class Container(containers.DeclarativeContainer):
     # Variant without reranking (for testing/comparison)
     search_service_no_rerank = providers.Factory(
         SearchService,
-        client_search_service=client_search_service,
+        client_search_service=client_search_service_no_rerank,
         document_search_service=document_search_service_no_rerank,
     )

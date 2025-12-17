@@ -11,7 +11,7 @@ from src.app.core.domain.models import (
 )
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.core.services.embedding import EmbeddingService, EmbeddingVectorResult
-from src.app.core.services.reranker import RerankerService
+from src.app.core.services.reranker import RerankerService, RankedResult
 from src.app.core.services.rrf import ReciprocalRankFusion
 from src.app.infrastructure.chunks_search_repository import ChunksRepositorySearch
 
@@ -65,6 +65,11 @@ def create_chunk_result(score: float, content: str = "Test content") -> ChunkSea
     )
 
 
+def to_ranked_results(results: list[ChunkSearchResult]) -> list[RankedResult[ChunkSearchResult]]:
+    """Convert ChunkSearchResults to RankedResults for mocking reranker output."""
+    return [RankedResult(item=r, score=r.score) for r in results]
+
+
 # =============================================================================
 # Tests for Reranker Score Threshold Filtering
 # =============================================================================
@@ -99,8 +104,8 @@ async def test_filtering_applied_when_reranker_enabled(
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
 
-    # Reranker returns same results (scores already set)
-    mock_reranker_service.rerank.return_value = fused_results
+    # Reranker returns RankedResult objects (scores already set)
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -177,7 +182,7 @@ async def test_filtering_with_negative_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -219,7 +224,7 @@ async def test_filtering_with_strict_positive_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -258,7 +263,7 @@ async def test_filtering_all_results_below_threshold(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -298,7 +303,7 @@ async def test_filtering_preserves_order(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)
@@ -339,7 +344,7 @@ async def test_filtering_with_exact_threshold_value(
     mock_search_repository.search_by_keyword.return_value = []
     mock_search_repository.search_by_vector.return_value = fused_results
     mock_rrf.fuse.return_value = fused_results
-    mock_reranker_service.rerank.return_value = fused_results
+    mock_reranker_service.rerank.return_value = to_ranked_results(fused_results)
 
     # Act
     request = SearchRequest(query="test query", top_k=10)

@@ -2,43 +2,65 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import TypeVar, Generic, Callable, Sequence
 
 from sentence_transformers import CrossEncoder
 
-from src.app.core.domain.models import ChunkSearchResult
-
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+@dataclass
+class RankedResult(Generic[T]):
+    """
+    Result from reranking containing the original item and its relevance score.
+
+    Attributes:
+        item: The original item that was reranked
+        score: CrossEncoder relevance score (logits, typically -12 to +12).
+               Positive scores indicate relevance, negative indicate irrelevance.
+               0.0 is the decision boundary (50% relevance probability).
+    """
+    item: T
+    score: float
 
 
 class RerankerService(ABC):
     """
     Abstract base class for reranking search results.
 
-    Rerankers take an initial set of search results and reorder them based on
+    Rerankers take an initial set of items and reorder them based on
     more sophisticated relevance scoring, typically using cross-encoder models
     that consider the query-document interaction.
+
+    This service is generic and can rerank any item type by providing a
+    content_extractor function that extracts text from each item.
     """
 
     @abstractmethod
     async def rerank(
         self,
         query: str,
-        results: list[ChunkSearchResult],
-        top_k: int | None = None
-    ) -> list[ChunkSearchResult]:
+        items: Sequence[T],
+        content_extractor: Callable[[T], str],
+        top_k: int | None = None,
+    ) -> list[RankedResult[T]]:
         """
-        Rerank search results based on query relevance.
+        Rerank items based on query relevance.
 
         Args:
             query: The search query string
-            results: List of initial search results to rerank
-            top_k: Optional number of top results to return. If None, returns all reranked results.
+            items: Sequence of items to rerank (any type)
+            content_extractor: Function to extract text content from each item
+            top_k: Optional number of top results to return. If None, returns all.
 
         Returns:
-            List of ChunkSearchResult objects reranked by relevance score (descending)
+            List of RankedResult objects sorted by score descending (most relevant first)
 
         Raises:
-            ValueError: If query is empty or results list is empty
+            ValueError: If query is empty or items sequence is empty
         """
         pass
 
@@ -64,41 +86,43 @@ class CrossEncoderReranker(RerankerService):
     async def rerank(
         self,
         query: str,
-        results: list[ChunkSearchResult],
-        top_k: int | None = None
-    ) -> list[ChunkSearchResult]:
+        items: Sequence[T],
+        content_extractor: Callable[[T], str],
+        top_k: int | None = None,
+    ) -> list[RankedResult[T]]:
         """
-        Rerank search results using CrossEncoder scores.
+        Rerank items using CrossEncoder scores.
 
-        The CrossEncoder model scores each (query, document) pair directly,
+        The CrossEncoder model scores each (query, content) pair directly,
         providing more accurate relevance scores than cosine similarity.
 
         Args:
             query: The search query string
-            results: List of initial search results to rerank
+            items: Sequence of items to rerank
+            content_extractor: Function to extract text content from each item
             top_k: Optional number of top results to return. If None, returns all.
 
         Returns:
-            List of ChunkSearchResult objects reranked by CrossEncoder scores (descending)
+            List of RankedResult[T] objects sorted by CrossEncoder scores (descending)
 
         Raises:
-            ValueError: If query is empty or results list is empty
+            ValueError: If query is empty or items sequence is empty
         """
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
 
-        if not results:
-            raise ValueError("Results list cannot be empty")
+        if not items:
+            raise ValueError("Items list cannot be empty")
 
         logger.info(
-            "Reranking %d results for query: '%s' (top_k=%s)",
-            len(results),
+            "Reranking %d items for query: '%s' (top_k=%s)",
+            len(items),
             query[:100],
             top_k
         )
 
-        # Prepare query-document pairs for the cross-encoder
-        pairs = [(query, result.chunk.chunk_content) for result in results]
+        # Prepare query-content pairs
+        pairs = [(query, content_extractor(item)) for item in items]
 
         # Score all pairs using the cross-encoder
         # Run in thread pool to avoid blocking the event loop
@@ -108,26 +132,23 @@ class CrossEncoderReranker(RerankerService):
             convert_to_numpy=True
         )
 
-        # Create new ChunkSearchResult objects with updated scores
-        reranked_results = [
-            ChunkSearchResult(
-                chunk=result.chunk,
-                score=float(score)
-            )
-            for result, score in zip(results, scores)
+        # Create RankedResult objects
+        ranked_results = [
+            RankedResult(item=item, score=float(score))
+            for item, score in zip(items, scores)
         ]
 
         # Sort by score descending (highest relevance first)
-        reranked_results.sort(key=lambda x: x.score, reverse=True)
+        ranked_results.sort(key=lambda x: x.score, reverse=True)
 
         # Apply top_k limit if specified
         if top_k is not None:
-            reranked_results = reranked_results[:top_k]
+            ranked_results = ranked_results[:top_k]
 
         logger.info(
             "Reranking complete. Top score: %.4f, Bottom score: %.4f",
-            reranked_results[0].score if reranked_results else 0.0,
-            reranked_results[-1].score if reranked_results else 0.0
+            ranked_results[0].score if ranked_results else 0.0,
+            ranked_results[-1].score if ranked_results else 0.0
         )
 
-        return reranked_results
+        return ranked_results
