@@ -1,23 +1,13 @@
-"""Tests for reranker service."""
+"""Tests for reranker service.
+
+Uses session-scoped reranker_service fixture from conftest.py to avoid
+reloading the ML model for each test.
+"""
 from uuid import uuid4
 
 import pytest
-from sentence_transformers import CrossEncoder
 
-from src.app.core.services.reranker import CrossEncoderReranker
 from src.app.core.domain.models import DocumentChunk, ChunkSearchResult
-
-
-@pytest.fixture(scope="module")
-def cross_encoder_model():
-    """Create a CrossEncoder model instance (module-scoped for efficiency)."""
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-
-@pytest.fixture
-def reranker(cross_encoder_model):
-    """Create a CrossEncoderReranker instance."""
-    return CrossEncoderReranker(cross_encoder_model)
 
 
 @pytest.fixture
@@ -88,7 +78,7 @@ def sample_documents():
 
 
 @pytest.mark.asyncio
-async def test_rerank_proof_of_address(reranker, sample_documents):
+async def test_rerank_proof_of_address(reranker_service, sample_documents):
     """Test that reranker ranks utility bill highest for 'proof of address' query."""
     # Arrange - Create initial search results with equal scores (simulating retrieval)
     initial_results = [
@@ -98,7 +88,7 @@ async def test_rerank_proof_of_address(reranker, sample_documents):
     ]
 
     # Act - Rerank based on query
-    reranked_results = await reranker.rerank("proof of address", initial_results)
+    reranked_results = await reranker_service.rerank("proof of address", initial_results)
 
     # Assert - Utility bill should rank highest
     assert len(reranked_results) == 3
@@ -122,7 +112,7 @@ async def test_rerank_proof_of_address(reranker, sample_documents):
     )
 
 @pytest.mark.asyncio
-async def test_rerank_with_top_k(reranker, sample_documents):
+async def test_rerank_with_top_k(reranker_service, sample_documents):
     """Test that top_k parameter limits the number of returned results."""
     # Arrange
     initial_results = [
@@ -132,35 +122,35 @@ async def test_rerank_with_top_k(reranker, sample_documents):
     ]
 
     # Act - Rerank with top_k=2
-    reranked_results = await reranker.rerank("proof of address", initial_results, top_k=2)
+    reranked_results = await reranker_service.rerank("proof of address", initial_results, top_k=2)
 
     # Assert - Should only return 2 results
     assert len(reranked_results) == 2, "Should return only top_k results"
 
 
 @pytest.mark.asyncio
-async def test_rerank_empty_query_raises_error(reranker, sample_documents):
+async def test_rerank_empty_query_raises_error(reranker_service, sample_documents):
     """Test that empty query raises ValueError."""
     initial_results = [
         ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
     ]
 
     with pytest.raises(ValueError, match="Query cannot be empty"):
-        await reranker.rerank("", initial_results)
+        await reranker_service.rerank("", initial_results)
 
     with pytest.raises(ValueError, match="Query cannot be empty"):
-        await reranker.rerank("   ", initial_results)
+        await reranker_service.rerank("   ", initial_results)
 
 
 @pytest.mark.asyncio
-async def test_rerank_empty_results_raises_error(reranker):
+async def test_rerank_empty_results_raises_error(reranker_service):
     """Test that empty results list raises ValueError."""
     with pytest.raises(ValueError, match="Results list cannot be empty"):
-        await reranker.rerank("proof of address", [])
+        await reranker_service.rerank("proof of address", [])
 
 
 @pytest.mark.asyncio
-async def test_rerank_maintains_chunk_data(reranker, sample_documents):
+async def test_rerank_maintains_chunk_data(reranker_service, sample_documents):
     """Test that reranking preserves all chunk data, only updating scores."""
     # Arrange
     initial_results = [
@@ -170,7 +160,7 @@ async def test_rerank_maintains_chunk_data(reranker, sample_documents):
     original_chunk = initial_results[0].chunk
 
     # Act
-    reranked_results = await reranker.rerank("proof of address", initial_results)
+    reranked_results = await reranker_service.rerank("proof of address", initial_results)
 
     # Assert - Chunk data should be preserved
     reranked_chunk = reranked_results[0].chunk
@@ -184,7 +174,7 @@ async def test_rerank_maintains_chunk_data(reranker, sample_documents):
 
 
 @pytest.mark.asyncio
-async def test_rerank_different_queries_produce_different_rankings(reranker, sample_documents):
+async def test_rerank_different_queries_produce_different_rankings(reranker_service, sample_documents):
     """Test that different queries produce different rankings."""
     initial_results = [
         ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
@@ -193,10 +183,10 @@ async def test_rerank_different_queries_produce_different_rankings(reranker, sam
     ]
 
     # Query 1: proof of address - should rank utility bill highest
-    results_address = await reranker.rerank("proof of address", initial_results)
+    results_address = await reranker_service.rerank("proof of address", initial_results)
 
     # Query 2: proof of identity - should rank passport highest
-    results_identity = await reranker.rerank("proof of identity", initial_results)
+    results_identity = await reranker_service.rerank("proof of identity", initial_results)
 
     # Assert - Different queries should produce different top results
     assert results_address[0].chunk.id == sample_documents["utility_bill"].id, (
