@@ -7,12 +7,29 @@ from pydantic.v1 import EmailStr
 
 from src.app.core.domain.models import (
     Client,
-    ClientSearchResult,
     Document,
-    DocumentSearchResult,
+    ScoredResult,
+    Score,
+    ScoreSource,
     SearchRequest,
 )
 from src.app.core.services.search_service import SearchService
+
+
+def create_client_result(client: Client, score: float) -> ScoredResult[Client]:
+    """Helper to create a ScoredResult[Client] for testing."""
+    return ScoredResult(
+        item=client,
+        score=Score(value=score, source=ScoreSource.TRIGRAM_SIMILARITY)
+    )
+
+
+def create_document_result(document: Document, score: float) -> ScoredResult[Document]:
+    """Helper to create a ScoredResult[Document] for testing."""
+    return ScoredResult(
+        item=document,
+        score=Score(value=score, source=ScoreSource.VECTOR_SIMILARITY)
+    )
 
 
 @pytest.fixture
@@ -73,14 +90,14 @@ class TestSearchServiceMixedResults:
 
         # Mock client search returns 2 results with scores 0.8 and 0.6
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=client1, score=0.8),
-            ClientSearchResult(client=client2, score=0.6),
+            create_client_result(client1, 0.8),
+            create_client_result(client2, 0.6),
         ]
 
         # Mock document search returns 2 results with scores 0.9 and 0.7
         mock_document_search_service.search.return_value = [
-            DocumentSearchResult(document=doc1, score=0.9),
-            DocumentSearchResult(document=doc2, score=0.7),
+            create_document_result(doc1, 0.9),
+            create_document_result(doc2, 0.7),
         ]
 
         request = SearchRequest(query="investment portfolio", top_k=10)
@@ -95,22 +112,18 @@ class TestSearchServiceMixedResults:
         assert results[0].type == "DOCUMENT"
         assert results[0].entity.id == doc1.id
         assert results[0].score == 0.9
-        assert results[0].rank == 1
 
         assert results[1].type == "CLIENT"
         assert results[1].entity.id == client1.id
         assert results[1].score == 0.8
-        assert results[1].rank == 2
 
         assert results[2].type == "DOCUMENT"
         assert results[2].entity.id == doc2.id
         assert results[2].score == 0.7
-        assert results[2].rank == 3
 
         assert results[3].type == "CLIENT"
         assert results[3].entity.id == client2.id
         assert results[3].score == 0.6
-        assert results[3].rank == 4
 
     @pytest.mark.asyncio
     async def test_search_respects_top_k_limit(
@@ -140,15 +153,15 @@ class TestSearchServiceMixedResults:
 
         # Mix of scores: 0.9, 0.8, 0.7, 0.6, 0.5, 0.4
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=clients[0], score=0.9),
-            ClientSearchResult(client=clients[1], score=0.6),
-            ClientSearchResult(client=clients[2], score=0.4),
+            create_client_result(clients[0], 0.9),
+            create_client_result(clients[1], 0.6),
+            create_client_result(clients[2], 0.4),
         ]
 
         mock_document_search_service.search.return_value = [
-            DocumentSearchResult(document=documents[0], score=0.8),
-            DocumentSearchResult(document=documents[1], score=0.7),
-            DocumentSearchResult(document=documents[2], score=0.5),
+            create_document_result(documents[0], 0.8),
+            create_document_result(documents[1], 0.7),
+            create_document_result(documents[2], 0.5),
         ]
 
         request = SearchRequest(query="test", top_k=3)
@@ -159,11 +172,8 @@ class TestSearchServiceMixedResults:
         # Assert - Should only return top 3
         assert len(results) == 3
         assert results[0].score == 0.9
-        assert results[0].rank == 1
         assert results[1].score == 0.8
-        assert results[1].rank == 2
         assert results[2].score == 0.7
-        assert results[2].rank == 3
 
 
 class TestSearchServiceNoClientsFound:
@@ -191,8 +201,8 @@ class TestSearchServiceNoClientsFound:
         mock_client_search_service.search.return_value = []  # No clients found
 
         mock_document_search_service.search.return_value = [
-            DocumentSearchResult(document=doc1, score=0.8),
-            DocumentSearchResult(document=doc2, score=0.6),
+            create_document_result(doc1, 0.8),
+            create_document_result(doc2, 0.6),
         ]
 
         request = SearchRequest(query="financial report", top_k=10)
@@ -204,9 +214,7 @@ class TestSearchServiceNoClientsFound:
         assert len(results) == 2
         assert all(result.type == "DOCUMENT" for result in results)
         assert results[0].entity.id == doc1.id
-        assert results[0].rank == 1
         assert results[1].entity.id == doc2.id
-        assert results[1].rank == 2
 
 
 class TestSearchServiceNoDocumentsFound:
@@ -234,8 +242,8 @@ class TestSearchServiceNoDocumentsFound:
         )
 
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=client1, score=0.9),
-            ClientSearchResult(client=client2, score=0.7),
+            create_client_result(client1, 0.9),
+            create_client_result(client2, 0.7),
         ]
 
         mock_document_search_service.search.return_value = []  # No documents found
@@ -249,9 +257,7 @@ class TestSearchServiceNoDocumentsFound:
         assert len(results) == 2
         assert all(result.type == "CLIENT" for result in results)
         assert results[0].entity.id == client1.id
-        assert results[0].rank == 1
         assert results[1].entity.id == client2.id
-        assert results[1].rank == 2
 
 
 class TestSearchServiceEmptyResults:
@@ -296,7 +302,7 @@ class TestSearchServiceExceptionHandling:
         mock_client_search_service.search.side_effect = Exception("Client search failed")
 
         mock_document_search_service.search.return_value = [
-            DocumentSearchResult(document=doc1, score=0.8)
+            create_document_result(doc1, 0.8)
         ]
 
         request = SearchRequest(query="test", top_k=10)
@@ -324,7 +330,7 @@ class TestSearchServiceExceptionHandling:
         )
 
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=client1, score=0.9)
+            create_client_result(client1, 0.9)
         ]
 
         # Document search raises exception
@@ -358,14 +364,14 @@ class TestSearchServiceExceptionHandling:
         assert len(results) == 0
 
 
-class TestSearchServiceRanking:
-    """Test SearchService ranking behavior."""
+class TestSearchServiceSorting:
+    """Test SearchService sorting behavior."""
 
     @pytest.mark.asyncio
-    async def test_search_assigns_correct_ranks(
+    async def test_search_sorts_results_by_score_descending(
         self, search_service, mock_client_search_service, mock_document_search_service
     ):
-        """Test that ranks are assigned correctly (1-based, sequential)."""
+        """Test that results are sorted by score descending."""
         # Arrange
         clients = [
             Client(
@@ -379,11 +385,11 @@ class TestSearchServiceRanking:
         ]
 
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=clients[0], score=0.95),
-            ClientSearchResult(client=clients[1], score=0.85),
-            ClientSearchResult(client=clients[2], score=0.75),
-            ClientSearchResult(client=clients[3], score=0.65),
-            ClientSearchResult(client=clients[4], score=0.55),
+            create_client_result(clients[0], 0.95),
+            create_client_result(clients[1], 0.85),
+            create_client_result(clients[2], 0.75),
+            create_client_result(clients[3], 0.65),
+            create_client_result(clients[4], 0.55),
         ]
 
         mock_document_search_service.search.return_value = []
@@ -393,16 +399,17 @@ class TestSearchServiceRanking:
         # Act
         results = await search_service.search(request)
 
-        # Assert
+        # Assert - Results sorted by score descending
         assert len(results) == 5
-        for i, result in enumerate(results, start=1):
-            assert result.rank == i
+        expected_scores = [0.95, 0.85, 0.75, 0.65, 0.55]
+        for i, result in enumerate(results):
+            assert result.score == expected_scores[i]
 
     @pytest.mark.asyncio
-    async def test_search_ranks_equal_scores_consistently(
+    async def test_search_handles_equal_scores(
         self, search_service, mock_client_search_service, mock_document_search_service
     ):
-        """Test that equal scores get sequential ranks (stable sort)."""
+        """Test that equal scores are handled correctly."""
         # Arrange
         client1 = Client(
             id=uuid4(),
@@ -420,11 +427,11 @@ class TestSearchServiceRanking:
 
         # Both have the same score
         mock_client_search_service.search.return_value = [
-            ClientSearchResult(client=client1, score=0.8)
+            create_client_result(client1, 0.8)
         ]
 
         mock_document_search_service.search.return_value = [
-            DocumentSearchResult(document=doc1, score=0.8)
+            create_document_result(doc1, 0.8)
         ]
 
         request = SearchRequest(query="test", top_k=10)
@@ -432,11 +439,8 @@ class TestSearchServiceRanking:
         # Act
         results = await search_service.search(request)
 
-        # Assert
+        # Assert - Both should be returned with same score
         assert len(results) == 2
-        assert results[0].rank == 1
-        assert results[1].rank == 2
-        # Both should have score 0.8
         assert results[0].score == 0.8
         assert results[1].score == 0.8
 

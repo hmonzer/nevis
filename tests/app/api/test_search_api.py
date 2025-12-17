@@ -73,13 +73,12 @@ async def test_search_results_have_correct_structure(nevis_client):
     for result in results:
         assert result.type in [SearchResultTypeEnum.CLIENT, SearchResultTypeEnum.DOCUMENT]
         assert result.score is not None
-        assert result.rank >= 1
         assert result.entity is not None
 
 
 @pytest.mark.asyncio
-async def test_search_ranks_results_by_relevance(nevis_client):
-    """Test search results are ranked by relevance score."""
+async def test_search_results_sorted_by_relevance(nevis_client):
+    """Test search results are sorted by relevance score descending."""
     # Create clients with varying relevance
     clients_data = [
         ("Tax", "Expert", "tax.expert@test.com", "Tax planning and optimization expert"),
@@ -102,10 +101,6 @@ async def test_search_ranks_results_by_relevance(nevis_client):
     # Results should be ordered by score (descending)
     for i in range(len(results) - 1):
         assert results[i].score >= results[i + 1].score, "Results should be sorted by score descending"
-
-    # Ranks should be sequential
-    for i, result in enumerate(results):
-        assert result.rank == i + 1, f"Rank should be {i + 1}, got {result.rank}"
 
 
 @pytest.mark.asyncio

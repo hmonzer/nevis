@@ -3,7 +3,7 @@
 import pytest
 from uuid import uuid4
 
-from src.app.core.domain.models import ChunkSearchResult, DocumentChunk
+from src.app.core.domain.models import DocumentChunk, ScoredResult, Score, ScoreSource
 from src.app.core.services.rrf import ReciprocalRankFusion
 
 
@@ -18,9 +18,12 @@ def create_chunk(chunk_id=None, content="test content") -> DocumentChunk:
     )
 
 
-def create_result(chunk: DocumentChunk, score: float) -> ChunkSearchResult:
-    """Helper to create a ChunkSearchResult for testing."""
-    return ChunkSearchResult(chunk=chunk, score=score)
+def create_result(chunk: DocumentChunk, score: float, source: ScoreSource = ScoreSource.VECTOR_SIMILARITY) -> ScoredResult[DocumentChunk]:
+    """Helper to create a ScoredResult[DocumentChunk] for testing."""
+    return ScoredResult(
+        item=chunk,
+        score=Score(value=score, source=source)
+    )
 
 
 class TestReciprocalRankFusion:
@@ -75,9 +78,9 @@ class TestReciprocalRankFusion:
         result = rrf.fuse(list1)
 
         assert len(result) == 3
-        assert result[0].chunk.id == chunk1.id
-        assert result[1].chunk.id == chunk2.id
-        assert result[2].chunk.id == chunk3.id
+        assert result[0].item.id == chunk1.id
+        assert result[1].item.id == chunk2.id
+        assert result[2].item.id == chunk3.id
 
     def test_fuse_single_list_computes_rrf_scores(self):
         """Test RRF score computation for a single list."""
@@ -95,8 +98,11 @@ class TestReciprocalRankFusion:
 
         # RRF score for rank 1: 1/(60+1) = 1/61
         # RRF score for rank 2: 1/(60+2) = 1/62
-        assert abs(result[0].score - 1 / 61) < 1e-10
-        assert abs(result[1].score - 1 / 62) < 1e-10
+        assert abs(result[0].value - 1 / 61) < 1e-10
+        assert abs(result[1].value - 1 / 62) < 1e-10
+        # Verify source is RRF_FUSION
+        assert result[0].source == ScoreSource.RRF_FUSION
+        assert result[1].source == ScoreSource.RRF_FUSION
 
     def test_fuse_two_disjoint_lists(self):
         """Test fusion of two lists with no overlapping chunks."""
@@ -120,10 +126,10 @@ class TestReciprocalRankFusion:
         rank1_ids = {chunk_a1.id, chunk_b1.id}
         rank2_ids = {chunk_a2.id, chunk_b2.id}
 
-        assert result[0].chunk.id in rank1_ids
-        assert result[1].chunk.id in rank1_ids
-        assert result[2].chunk.id in rank2_ids
-        assert result[3].chunk.id in rank2_ids
+        assert result[0].item.id in rank1_ids
+        assert result[1].item.id in rank1_ids
+        assert result[2].item.id in rank2_ids
+        assert result[3].item.id in rank2_ids
 
     def test_fuse_overlapping_chunks_accumulate_scores(self):
         """Test that overlapping chunks accumulate RRF scores."""
@@ -150,11 +156,11 @@ class TestReciprocalRankFusion:
         assert len(result) == 3
 
         # Shared chunk should be first (appears in both lists at rank 1)
-        assert result[0].chunk.id == shared_chunk.id
+        assert result[0].item.id == shared_chunk.id
 
         # Shared chunk RRF score: 1/(60+1) + 1/(60+1) = 2/61
         expected_shared_score = 2 / 61
-        assert abs(result[0].score - expected_shared_score) < 1e-10
+        assert abs(result[0].value - expected_shared_score) < 1e-10
 
     def test_fuse_different_ranks_for_same_chunk(self):
         """Test chunk appearing at different ranks in different lists."""
@@ -177,11 +183,11 @@ class TestReciprocalRankFusion:
         result = rrf.fuse(list_a, list_b)
 
         # Find the shared chunk in results
-        shared_result = next(r for r in result if r.chunk.id == shared_chunk.id)
+        shared_result = next(r for r in result if r.item.id == shared_chunk.id)
 
         # RRF score: 1/(60+1) + 1/(60+2) = 1/61 + 1/62
         expected_score = 1 / 61 + 1 / 62
-        assert abs(shared_result.score - expected_score) < 1e-10
+        assert abs(shared_result.value - expected_score) < 1e-10
 
     def test_fuse_three_lists(self):
         """Test fusion of three ranked lists."""
@@ -202,11 +208,11 @@ class TestReciprocalRankFusion:
         assert len(result) == 4
 
         # Shared chunk should be first (appears in all 3 lists)
-        assert result[0].chunk.id == shared_chunk.id
+        assert result[0].item.id == shared_chunk.id
 
         # RRF score: 1/61 + 1/61 + 1/62 (rank 1, 1, 2)
         expected_score = 1 / 61 + 1 / 61 + 1 / 62
-        assert abs(result[0].score - expected_score) < 1e-10
+        assert abs(result[0].value - expected_score) < 1e-10
 
     def test_fuse_with_k_zero(self):
         """Test fusion with k=0 (ranks become the only factor)."""
@@ -220,8 +226,8 @@ class TestReciprocalRankFusion:
         result = rrf.fuse(list1)
 
         # With k=0: rank 1 -> 1/1 = 1.0, rank 2 -> 1/2 = 0.5
-        assert abs(result[0].score - 1.0) < 1e-10
-        assert abs(result[1].score - 0.5) < 1e-10
+        assert abs(result[0].value - 1.0) < 1e-10
+        assert abs(result[1].value - 0.5) < 1e-10
 
     def test_fuse_with_limit(self):
         """Test fuse_with_limit returns only top-k results."""
@@ -233,9 +239,9 @@ class TestReciprocalRankFusion:
         result = rrf.fuse_with_limit(list1, limit=3)
 
         assert len(result) == 3
-        assert result[0].chunk.id == chunks[0].id
-        assert result[1].chunk.id == chunks[1].id
-        assert result[2].chunk.id == chunks[2].id
+        assert result[0].item.id == chunks[0].id
+        assert result[1].item.id == chunks[1].id
+        assert result[2].item.id == chunks[2].id
 
     def test_fuse_with_limit_more_than_results(self):
         """Test fuse_with_limit when limit exceeds available results."""
@@ -258,8 +264,8 @@ class TestReciprocalRankFusion:
 
         result = rrf.fuse(list1)
 
-        assert result[0].chunk.chunk_content == "important content"
-        assert result[0].chunk.embedding == chunk.embedding
+        assert result[0].item.chunk_content == "important content"
+        assert result[0].item.embedding == chunk.embedding
 
     def test_fuse_deterministic_ordering_for_equal_scores(self):
         """Test that fusion produces consistent results for equal scores."""
@@ -275,9 +281,9 @@ class TestReciprocalRankFusion:
         results = [rrf.fuse(list1, list2) for _ in range(10)]
 
         # All results should have the same ordering
-        first_result_order = [r.chunk.id for r in results[0]]
+        first_result_order = [r.item.id for r in results[0]]
         for result in results[1:]:
-            assert [r.chunk.id for r in result] == first_result_order
+            assert [r.item.id for r in result] == first_result_order
 
     def test_rrf_boosts_chunks_appearing_in_multiple_lists(self):
         """Test that chunks in multiple lists rank higher than single-list chunks."""
@@ -299,4 +305,27 @@ class TestReciprocalRankFusion:
         # 2/62 ≈ 0.0323, 1/61 ≈ 0.0164
         # So shared chunk should rank higher
 
-        assert result[0].chunk.id == shared_chunk.id
+        assert result[0].item.id == shared_chunk.id
+
+    def test_fuse_preserves_score_history(self):
+        """Test that RRF fusion preserves original scores in history."""
+        rrf = ReciprocalRankFusion(k=60)
+
+        shared_chunk = create_chunk()
+        chunk_a = create_chunk()
+
+        # Use different sources to test history tracking
+        list_a = [create_result(shared_chunk, 0.9, ScoreSource.VECTOR_SIMILARITY)]
+        list_b = [create_result(shared_chunk, 0.8, ScoreSource.KEYWORD_RANK)]
+
+        result = rrf.fuse(list_a, list_b)
+
+        # The shared chunk should have both original scores in history
+        shared_result = result[0]
+        assert shared_result.item.id == shared_chunk.id
+        assert len(shared_result.score_history) == 2
+
+        # Check that both original scores are preserved
+        history_sources = {s.source for s in shared_result.score_history}
+        assert ScoreSource.VECTOR_SIMILARITY in history_sources
+        assert ScoreSource.KEYWORD_RANK in history_sources

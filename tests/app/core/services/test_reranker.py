@@ -7,14 +7,22 @@ from uuid import uuid4
 
 import pytest
 
-from src.app.core.domain.models import DocumentChunk, ChunkSearchResult
-from src.app.core.services.reranker import RankedResult
+from src.app.core.domain.models import DocumentChunk, ScoredResult, Score, ScoreSource
 
 
-# Content extractor for ChunkSearchResult - used across all tests
-def chunk_content_extractor(result: ChunkSearchResult) -> str:
+# Content extractor for DocumentChunk - used across all tests
+# Note: The extractor receives the item (DocumentChunk), not the ScoredResult wrapper
+def chunk_content_extractor(chunk: DocumentChunk) -> str:
     """Extract chunk content for reranking."""
-    return result.chunk.chunk_content
+    return chunk.chunk_content
+
+
+def create_scored_chunk(chunk: DocumentChunk, score: float = 0.7) -> ScoredResult[DocumentChunk]:
+    """Helper to create a ScoredResult[DocumentChunk] for testing."""
+    return ScoredResult(
+        item=chunk,
+        score=Score(value=score, source=ScoreSource.VECTOR_SIMILARITY)
+    )
 
 
 @pytest.fixture
@@ -89,36 +97,37 @@ async def test_rerank_proof_of_address(reranker_service, sample_documents):
     """Test that reranker ranks utility bill highest for 'proof of address' query."""
     # Arrange - Create initial search results with equal scores (simulating retrieval)
     initial_results = [
-        ChunkSearchResult(chunk=sample_documents["passport"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["license"], score=0.7),
+        create_scored_chunk(sample_documents["passport"]),
+        create_scored_chunk(sample_documents["utility_bill"]),
+        create_scored_chunk(sample_documents["license"]),
     ]
 
     # Act - Rerank based on query
     ranked = await reranker_service.rerank(
         query="proof of address",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
-    # Assert - Returns RankedResult objects
+    # Assert - Returns ScoredResult objects with CROSS_ENCODER source
     assert len(ranked) == 3
-    assert all(isinstance(r, RankedResult) for r in ranked)
+    assert all(isinstance(r, ScoredResult) for r in ranked)
+    assert all(r.source == ScoreSource.CROSS_ENCODER for r in ranked)
 
     # Utility bill should rank highest
-    assert ranked[0].item.chunk.id == sample_documents["utility_bill"].id, (
+    assert ranked[0].item.id == sample_documents["utility_bill"].id, (
         "Utility bill should rank highest for 'proof of address' query"
     )
 
     # Verify scores are in descending order
     for i in range(len(ranked) - 1):
-        assert ranked[i].score >= ranked[i + 1].score, (
+        assert ranked[i].value >= ranked[i + 1].value, (
             "Reranked results should be ordered by score descending"
         )
 
     # Calculate score differences
-    top_score = ranked[0].score
-    second_score = ranked[1].score
+    top_score = ranked[0].value
+    second_score = ranked[1].value
     score_gap = top_score - second_score
 
     # The gap between top result and second should be meaningful
@@ -132,15 +141,15 @@ async def test_rerank_with_top_k(reranker_service, sample_documents):
     """Test that top_k parameter limits the number of returned results."""
     # Arrange
     initial_results = [
-        ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["passport"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["license"], score=0.7),
+        create_scored_chunk(sample_documents["utility_bill"]),
+        create_scored_chunk(sample_documents["passport"]),
+        create_scored_chunk(sample_documents["license"]),
     ]
 
     # Act - Rerank with top_k=2
     ranked = await reranker_service.rerank(
         query="proof of address",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
         top_k=2,
     )
@@ -153,20 +162,20 @@ async def test_rerank_with_top_k(reranker_service, sample_documents):
 async def test_rerank_empty_query_raises_error(reranker_service, sample_documents):
     """Test that empty query raises ValueError."""
     initial_results = [
-        ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
+        create_scored_chunk(sample_documents["utility_bill"]),
     ]
 
     with pytest.raises(ValueError, match="Query cannot be empty"):
         await reranker_service.rerank(
             query="",
-            items=initial_results,
+            results=initial_results,
             content_extractor=chunk_content_extractor,
         )
 
     with pytest.raises(ValueError, match="Query cannot be empty"):
         await reranker_service.rerank(
             query="   ",
-            items=initial_results,
+            results=initial_results,
             content_extractor=chunk_content_extractor,
         )
 
@@ -174,10 +183,10 @@ async def test_rerank_empty_query_raises_error(reranker_service, sample_document
 @pytest.mark.asyncio
 async def test_rerank_empty_results_raises_error(reranker_service):
     """Test that empty results list raises ValueError."""
-    with pytest.raises(ValueError, match="Items list cannot be empty"):
+    with pytest.raises(ValueError, match="Results list cannot be empty"):
         await reranker_service.rerank(
             query="proof of address",
-            items=[],
+            results=[],
             content_extractor=chunk_content_extractor,
         )
 
@@ -187,57 +196,60 @@ async def test_rerank_maintains_chunk_data(reranker_service, sample_documents):
     """Test that reranking preserves all chunk data, only updating scores."""
     # Arrange
     initial_results = [
-        ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.5),
+        create_scored_chunk(sample_documents["utility_bill"], score=0.5),
     ]
 
-    original_chunk = initial_results[0].chunk
+    original_chunk = initial_results[0].item
 
     # Act
     ranked = await reranker_service.rerank(
         query="proof of address",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
-    # Assert - Original item is preserved in RankedResult
-    assert ranked[0].item.chunk.id == original_chunk.id
-    assert ranked[0].item.chunk.document_id == original_chunk.document_id
-    assert ranked[0].item.chunk.chunk_index == original_chunk.chunk_index
-    assert ranked[0].item.chunk.chunk_content == original_chunk.chunk_content
+    # Assert - Original item is preserved in ScoredResult
+    assert ranked[0].item.id == original_chunk.id
+    assert ranked[0].item.document_id == original_chunk.document_id
+    assert ranked[0].item.chunk_index == original_chunk.chunk_index
+    assert ranked[0].item.chunk_content == original_chunk.chunk_content
 
     # Score should be the CrossEncoder score, not the original
-    assert ranked[0].score != initial_results[0].score
+    assert ranked[0].value != initial_results[0].value
+    # Original score should be preserved in history
+    assert len(ranked[0].score_history) == 1
+    assert ranked[0].score_history[0].value == 0.5
 
 
 @pytest.mark.asyncio
 async def test_rerank_different_queries_produce_different_rankings(reranker_service, sample_documents):
     """Test that different queries produce different rankings."""
     initial_results = [
-        ChunkSearchResult(chunk=sample_documents["utility_bill"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["passport"], score=0.7),
-        ChunkSearchResult(chunk=sample_documents["license"], score=0.7),
+        create_scored_chunk(sample_documents["utility_bill"]),
+        create_scored_chunk(sample_documents["passport"]),
+        create_scored_chunk(sample_documents["license"]),
     ]
 
     # Query 1: proof of address - should rank utility bill highest
     results_address = await reranker_service.rerank(
         query="proof of address",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
     # Query 2: proof of identity - should rank passport highest
     results_identity = await reranker_service.rerank(
         query="proof of identity",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
     # Assert - Different queries should produce different top results
-    assert results_address[0].item.chunk.id == sample_documents["utility_bill"].id, (
+    assert results_address[0].item.id == sample_documents["utility_bill"].id, (
         "Proof of address query should rank utility bill highest"
     )
 
-    assert results_identity[0].item.chunk.id == sample_documents["passport"].id, (
+    assert results_identity[0].item.id == sample_documents["passport"].id, (
         "Proof of identity query should rank passport highest"
     )
 
@@ -247,24 +259,32 @@ async def test_rerank_different_queries_produce_different_rankings(reranker_serv
 # =============================================================================
 
 
+def create_scored_string(text: str, score: float = 0.5) -> ScoredResult[str]:
+    """Helper to create a ScoredResult[str] for testing."""
+    return ScoredResult(
+        item=text,
+        score=Score(value=score, source=ScoreSource.VECTOR_SIMILARITY)
+    )
+
+
 @pytest.mark.asyncio
 async def test_rerank_with_simple_strings(reranker_service):
     """Test that reranker works with simple string items."""
-    # Arrange - Simple string items
-    items = [
-        "The cat sat on the mat",
-        "Dogs are loyal pets",
-        "Python is a programming language",
+    # Arrange - Simple string items wrapped in ScoredResult
+    results = [
+        create_scored_string("The cat sat on the mat"),
+        create_scored_string("Dogs are loyal pets"),
+        create_scored_string("Python is a programming language"),
     ]
 
     # Act - Rerank strings directly
     ranked = await reranker_service.rerank(
         query="pets and animals",
-        items=items,
+        results=results,
         content_extractor=lambda x: x,  # Identity function for strings
     )
 
-    # Assert - Should return RankedResult[str]
+    # Assert - Should return ScoredResult[str]
     assert len(ranked) == 3
     assert all(isinstance(r.item, str) for r in ranked)
     # Cat and dog items should score higher than programming
@@ -276,17 +296,26 @@ async def test_rerank_with_simple_strings(reranker_service):
 @pytest.mark.asyncio
 async def test_rerank_with_dict_items(reranker_service):
     """Test that reranker works with dictionary items."""
-    # Arrange - Dict items
-    items = [
-        {"id": 1, "title": "Tax Return 2024", "content": "Annual tax filing for fiscal year 2024"},
-        {"id": 2, "title": "Meeting Notes", "content": "Quarterly review meeting discussion"},
-        {"id": 3, "title": "Tax Deductions", "content": "List of applicable tax deductions"},
+    # Arrange - Dict items wrapped in ScoredResult
+    results = [
+        ScoredResult(
+            item={"id": 1, "title": "Tax Return 2024", "content": "Annual tax filing for fiscal year 2024"},
+            score=Score(value=0.5, source=ScoreSource.VECTOR_SIMILARITY)
+        ),
+        ScoredResult(
+            item={"id": 2, "title": "Meeting Notes", "content": "Quarterly review meeting discussion"},
+            score=Score(value=0.5, source=ScoreSource.VECTOR_SIMILARITY)
+        ),
+        ScoredResult(
+            item={"id": 3, "title": "Tax Deductions", "content": "List of applicable tax deductions"},
+            score=Score(value=0.5, source=ScoreSource.VECTOR_SIMILARITY)
+        ),
     ]
 
     # Act - Rerank dicts with custom extractor
     ranked = await reranker_service.rerank(
         query="tax documents",
-        items=items,
+        results=results,
         content_extractor=lambda x: f"{x['title']}. {x['content']}",
     )
 
@@ -378,26 +407,26 @@ async def test_client_query_scores_client_record_high(reranker_service, client_a
     not specific documents. The client record should score higher than document chunks.
     """
     initial_results = [
-        ChunkSearchResult(chunk=client_and_document_chunks["client"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["tax_document"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["investment_document"], score=0.7),
+        create_scored_chunk(client_and_document_chunks["client"]),
+        create_scored_chunk(client_and_document_chunks["tax_document"]),
+        create_scored_chunk(client_and_document_chunks["investment_document"]),
     ]
 
     # Query: Simple client name lookup
     ranked = await reranker_service.rerank(
         query="John Doe",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
     # Client record should rank highest for a name query
-    assert ranked[0].item.chunk.id == client_and_document_chunks["client"].id, (
+    assert ranked[0].item.id == client_and_document_chunks["client"].id, (
         "Client record should rank highest for simple name query"
     )
 
     # Client score should be notably higher
-    client_score = ranked[0].score
-    second_score = ranked[1].score
+    client_score = ranked[0].value
+    second_score = ranked[1].value
     print(f"Name query 'John Doe': client={client_score:.4f}, second={second_score:.4f}")
 
     assert client_score > second_score, (
@@ -415,32 +444,32 @@ async def test_specific_document_query_scores_client_record_low(reranker_service
     not the client entity. The client record should score lower than the relevant document.
     """
     initial_results = [
-        ChunkSearchResult(chunk=client_and_document_chunks["client"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["tax_document"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["investment_document"], score=0.7),
+        create_scored_chunk(client_and_document_chunks["client"]),
+        create_scored_chunk(client_and_document_chunks["tax_document"]),
+        create_scored_chunk(client_and_document_chunks["investment_document"]),
     ]
 
     # Query: Specific document request
     ranked = await reranker_service.rerank(
         query="John Doe's tax record for 2024",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
     # Tax document should rank highest for this specific query
-    assert ranked[0].item.chunk.id == client_and_document_chunks["tax_document"].id, (
+    assert ranked[0].item.id == client_and_document_chunks["tax_document"].id, (
         "Tax document should rank highest for tax-specific query"
     )
 
     # Find client score position and value
-    client_result = next(r for r in ranked if r.item.chunk.id == client_and_document_chunks["client"].id)
+    client_result = next(r for r in ranked if r.item.id == client_and_document_chunks["client"].id)
     tax_result = ranked[0]
 
-    print(f"Tax query: tax_doc={tax_result.score:.4f}, client={client_result.score:.4f}")
+    print(f"Tax query: tax_doc={tax_result.value:.4f}, client={client_result.value:.4f}")
 
-    assert tax_result.score > client_result.score, (
+    assert tax_result.value > client_result.value, (
         f"Tax document should score higher than client for specific query. "
-        f"Tax: {tax_result.score:.4f}, Client: {client_result.score:.4f}"
+        f"Tax: {tax_result.value:.4f}, Client: {client_result.value:.4f}"
     )
 
 
@@ -450,32 +479,32 @@ async def test_investment_query_scores_relevant_document_high(reranker_service, 
     Test that investment-specific query ranks investment document highest.
     """
     initial_results = [
-        ChunkSearchResult(chunk=client_and_document_chunks["client"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["tax_document"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["investment_document"], score=0.7),
+        create_scored_chunk(client_and_document_chunks["client"]),
+        create_scored_chunk(client_and_document_chunks["tax_document"]),
+        create_scored_chunk(client_and_document_chunks["investment_document"]),
     ]
 
     # Query: Investment-specific request
     ranked = await reranker_service.rerank(
         query="John Doe portfolio performance 2024",
-        items=initial_results,
+        results=initial_results,
         content_extractor=chunk_content_extractor,
     )
 
     # Investment document should rank highest
-    assert ranked[0].item.chunk.id == client_and_document_chunks["investment_document"].id, (
+    assert ranked[0].item.id == client_and_document_chunks["investment_document"].id, (
         "Investment document should rank highest for portfolio query"
     )
 
     # Client should rank lower than the relevant document
-    client_result = next(r for r in ranked if r.item.chunk.id == client_and_document_chunks["client"].id)
+    client_result = next(r for r in ranked if r.item.id == client_and_document_chunks["client"].id)
     investment_result = ranked[0]
 
-    print(f"Investment query: investment={investment_result.score:.4f}, client={client_result.score:.4f}")
+    print(f"Investment query: investment={investment_result.value:.4f}, client={client_result.value:.4f}")
 
-    assert investment_result.score > client_result.score, (
+    assert investment_result.value > client_result.value, (
         f"Investment document should score higher than client. "
-        f"Investment: {investment_result.score:.4f}, Client: {client_result.score:.4f}"
+        f"Investment: {investment_result.value:.4f}, Client: {client_result.value:.4f}"
     )
 
 
@@ -488,9 +517,9 @@ async def test_cross_encoder_score_ranges_for_client_vs_document_queries(reranke
     for filtering client results based on query intent.
     """
     initial_results = [
-        ChunkSearchResult(chunk=client_and_document_chunks["client"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["tax_document"], score=0.7),
-        ChunkSearchResult(chunk=client_and_document_chunks["investment_document"], score=0.7),
+        create_scored_chunk(client_and_document_chunks["client"]),
+        create_scored_chunk(client_and_document_chunks["tax_document"]),
+        create_scored_chunk(client_and_document_chunks["investment_document"]),
     ]
 
     queries = [
@@ -516,12 +545,12 @@ async def test_cross_encoder_score_ranges_for_client_vs_document_queries(reranke
     for query, query_type in queries:
         ranked = await reranker_service.rerank(
             query=query,
-            items=initial_results,
+            results=initial_results,
             content_extractor=chunk_content_extractor,
         )
 
-        client_result = next(r for r in ranked if r.item.chunk.id == client_and_document_chunks["client"].id)
-        client_score = client_result.score
+        client_result = next(r for r in ranked if r.item.id == client_and_document_chunks["client"].id)
+        client_score = client_result.value
 
         if query_type == "client_lookup":
             client_lookup_scores.append(client_score)

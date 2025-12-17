@@ -54,9 +54,9 @@ async def test_search_by_email_partial_match(client_search_repository, unit_of_w
 
     # Assert
     assert len(results) == 1
-    assert results[0].client.email == "john.doe@neviswealth.com"
-    assert results[0].client.first_name == "John"
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.email == "john.doe@neviswealth.com"
+    assert results[0].item.first_name == "John"
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -85,12 +85,12 @@ async def test_search_by_first_name(client_search_repository, unit_of_work):
 
     # Assert - Both should be found
     assert len(results) == 2
-    first_names = {result.client.first_name for result in results}
+    first_names = {result.item.first_name for result in results}
     assert "Alexander" in first_names
     assert "Alexandra" in first_names
     # Verify scores are present
     for result in results:
-        assert 0.0 <= result.score <= 1.0
+        assert 0.0 <= result.value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -112,8 +112,8 @@ async def test_search_by_last_name(client_search_repository, unit_of_work):
 
     # Assert
     assert len(results) == 1
-    assert results[0].client.last_name == "O'Brien"
-    assert results[0].score > 0.0
+    assert results[0].item.last_name == "O'Brien"
+    assert results[0].value > 0.0
 
 
 @pytest.mark.asyncio
@@ -142,9 +142,9 @@ async def test_search_by_description(client_search_repository, unit_of_work):
 
     # Assert
     assert len(results) == 1
-    assert results[0].client.first_name == "Sarah"
-    assert "Technology" in results[0].client.description
-    assert results[0].score > 0.0
+    assert results[0].item.first_name == "Sarah"
+    assert "Technology" in results[0].item.description
+    assert results[0].value > 0.0
 
 
 @pytest.mark.asyncio
@@ -173,9 +173,9 @@ async def test_search_with_null_description(client_search_repository, unit_of_wo
 
     # Assert
     assert len(results) == 1
-    assert results[0].client.first_name == "Robert"
-    assert results[0].client.description is None
-    assert results[0].score > 0.0
+    assert results[0].item.first_name == "Robert"
+    assert results[0].item.description is None
+    assert results[0].value > 0.0
 
 
 @pytest.mark.asyncio
@@ -232,10 +232,10 @@ async def test_search_orders_by_relevance(client_search_repository, unit_of_work
 
     # Assert - "Chris" should be first (exact match), others follow
     assert len(results) >= 1
-    assert results[0].client.first_name == "Chris"
+    assert results[0].item.first_name == "Chris"
     # Verify scores are in descending order
     for i in range(len(results) - 1):
-        assert results[i].score >= results[i + 1].score
+        assert results[i].value >= results[i + 1].value
 
 
 @pytest.mark.asyncio
@@ -269,6 +269,6 @@ async def test_search_with_custom_threshold(client_search_repository, unit_of_wo
     assert len(results_loose) >= len(results_strict)
     # All results should have scores within their respective thresholds
     for result in results_strict:
-        assert result.score >= 0.5
+        assert result.value >= 0.5
     for result in results_loose:
-        assert result.score >= 0.1
+        assert result.value >= 0.1

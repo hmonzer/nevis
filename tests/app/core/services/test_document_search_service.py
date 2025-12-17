@@ -8,12 +8,22 @@ import pytest_asyncio
 from src.app.core.domain.models import (
     Document,
     DocumentChunk,
-    ChunkSearchResult,
+    ScoredResult,
+    Score,
+    ScoreSource,
     SearchRequest
 )
 from src.app.core.services.chunks_search_service import DocumentChunkSearchService
 from src.app.core.services.document_search_service import DocumentSearchService
 from src.app.infrastructure.document_repository import DocumentRepository
+
+
+def create_chunk_result(chunk: DocumentChunk, score: float) -> ScoredResult[DocumentChunk]:
+    """Helper to create a ScoredResult[DocumentChunk] for testing."""
+    return ScoredResult(
+        item=chunk,
+        score=Score(value=score, source=ScoreSource.VECTOR_SIMILARITY)
+    )
 
 
 @pytest_asyncio.fixture
@@ -88,9 +98,9 @@ async def test_search_multiple_documents(document_search_service, mock_chunk_sea
 
     # Mock chunk search results
     chunk_results = [
-        ChunkSearchResult(chunk=chunk1, score=0.85),
-        ChunkSearchResult(chunk=chunk2, score=0.78),
-        ChunkSearchResult(chunk=chunk3, score=0.72),
+        create_chunk_result(chunk1, 0.85),
+        create_chunk_result(chunk2, 0.78),
+        create_chunk_result(chunk3, 0.72),
     ]
     mock_chunk_search_service.search.return_value = chunk_results
 
@@ -103,12 +113,12 @@ async def test_search_multiple_documents(document_search_service, mock_chunk_sea
 
     # Assert
     assert len(results) == 3
-    assert results[0].document.id == doc1_id
-    assert results[0].score == 0.85
-    assert results[1].document.id == doc2_id
-    assert results[1].score == 0.78
-    assert results[2].document.id == doc3_id
-    assert results[2].score == 0.72
+    assert results[0].item.id == doc1_id
+    assert results[0].value == 0.85
+    assert results[1].item.id == doc2_id
+    assert results[1].value == 0.78
+    assert results[2].item.id == doc3_id
+    assert results[2].value == 0.72
 
     # Verify chunk search was called with a SearchRequest
     mock_chunk_search_service.search.assert_called_once()
@@ -157,9 +167,9 @@ async def test_search_multiple_chunks_same_document(document_search_service, moc
 
     # Mock chunk search results - different scores for chunks from same document
     chunk_results = [
-        ChunkSearchResult(chunk=chunk1, score=0.92),  # Highest score
-        ChunkSearchResult(chunk=chunk2, score=0.88),
-        ChunkSearchResult(chunk=chunk3, score=0.75),
+        create_chunk_result(chunk1, 0.92),  # Highest score
+        create_chunk_result(chunk2, 0.88),
+        create_chunk_result(chunk3, 0.75),
     ]
     mock_chunk_search_service.search.return_value = chunk_results
 
@@ -172,8 +182,8 @@ async def test_search_multiple_chunks_same_document(document_search_service, moc
 
     # Assert - Should return only one document with the highest score
     assert len(results) == 1
-    assert results[0].document.id == doc_id
-    assert results[0].score == 0.92  # Should use the highest score from the chunks
+    assert results[0].item.id == doc_id
+    assert results[0].value == 0.92  # Should use the highest score from the chunks
 
     # Verify batch fetch was used with single document
     mock_document_repository.get_by_ids.assert_called_once_with([doc_id])
@@ -202,11 +212,11 @@ async def test_search_respects_top_k_limit(document_search_service, mock_chunk_s
             chunk_content=f"Financial analysis report {i+1} for portfolio review."
         )
         # Scores in descending order
-        chunk_results.append(ChunkSearchResult(chunk=chunk, score=0.9 - (i * 0.1)))
+        chunk_results.append(create_chunk_result(chunk, 0.9 - (i * 0.1)))
 
     mock_chunk_search_service.search.return_value = chunk_results
     # Return only the top 3 documents in order
-    top_3_docs = [documents[chunk_results[i].chunk.document_id] for i in range(3)]
+    top_3_docs = [documents[chunk_results[i].item.document_id] for i in range(3)]
     mock_document_repository.get_by_ids.return_value = top_3_docs
 
     # Act - Request only top 3
@@ -216,9 +226,9 @@ async def test_search_respects_top_k_limit(document_search_service, mock_chunk_s
     # Assert - Should return exactly 3 documents
     assert len(results) == 3
     # Verify they are the top 3 by score
-    assert results[0].score == 0.9
-    assert results[1].score == 0.8
-    assert results[2].score == 0.7
+    assert results[0].value == 0.9
+    assert results[1].value == 0.8
+    assert results[2].value == 0.7
 
 
 @pytest.mark.asyncio
@@ -250,37 +260,37 @@ async def test_search_mixed_documents_and_chunks(document_search_service, mock_c
 
     chunk_results = [
         # Doc1 - 3 chunks, highest score is 0.95
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=0,
-                              chunk_content="Investment review shows strong performance."),
-            score=0.95
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=0,
+                         chunk_content="Investment review shows strong performance."),
+            0.95
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=1,
-                              chunk_content="Annual returns exceeded expectations."),
-            score=0.82
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=1,
+                         chunk_content="Annual returns exceeded expectations."),
+            0.82
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=2,
-                              chunk_content="Portfolio rebalancing recommended."),
-            score=0.75
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc1_id, chunk_index=2,
+                         chunk_content="Portfolio rebalancing recommended."),
+            0.75
         ),
         # Doc2 - 1 chunk, score 0.88
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc2_id, chunk_index=0,
-                              chunk_content="Market outlook remains positive for equities."),
-            score=0.88
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc2_id, chunk_index=0,
+                         chunk_content="Market outlook remains positive for equities."),
+            0.88
         ),
         # Doc3 - 2 chunks, highest score is 0.80
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc3_id, chunk_index=0,
-                              chunk_content="Client portfolio summary for review."),
-            score=0.80
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc3_id, chunk_index=0,
+                         chunk_content="Client portfolio summary for review."),
+            0.80
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc3_id, chunk_index=1,
-                              chunk_content="Asset allocation breakdown by category."),
-            score=0.70
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc3_id, chunk_index=1,
+                         chunk_content="Asset allocation breakdown by category."),
+            0.70
         ),
     ]
 
@@ -294,12 +304,12 @@ async def test_search_mixed_documents_and_chunks(document_search_service, mock_c
 
     # Assert - Should return 3 documents, ordered by highest chunk score
     assert len(results) == 3
-    assert results[0].document.id == doc1_id
-    assert results[0].score == 0.95
-    assert results[1].document.id == doc2_id
-    assert results[1].score == 0.88
-    assert results[2].document.id == doc3_id
-    assert results[2].score == 0.80
+    assert results[0].item.id == doc1_id
+    assert results[0].value == 0.95
+    assert results[1].item.id == doc2_id
+    assert results[1].value == 0.88
+    assert results[2].item.id == doc3_id
+    assert results[2].value == 0.80
 
 
 @pytest.mark.asyncio
@@ -329,10 +339,10 @@ async def test_search_passes_request_to_chunk_service(document_search_service, m
     )
 
     chunk_results = [
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc_id, chunk_index=0,
-                              chunk_content="Regulatory compliance requirements overview."),
-            score=0.85
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc_id, chunk_index=0,
+                         chunk_content="Regulatory compliance requirements overview."),
+            0.85
         ),
     ]
 
@@ -360,10 +370,10 @@ async def test_search_document_not_found_in_repository(document_search_service, 
     doc_id = uuid4()
 
     chunk_results = [
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=doc_id, chunk_index=0,
-                              chunk_content="Test content"),
-            score=0.85
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=doc_id, chunk_index=0,
+                         chunk_content="Test content"),
+            0.85
         ),
     ]
 
@@ -407,25 +417,25 @@ async def test_search_wealth_management_scenario(document_search_service, mock_c
 
     # Search for "estate planning" should rank estate doc highest
     chunk_results = [
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=estate_doc_id, chunk_index=0,
-                              chunk_content="Estate planning for intergenerational wealth transfer strategies."),
-            score=0.94
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=estate_doc_id, chunk_index=0,
+                         chunk_content="Estate planning for intergenerational wealth transfer strategies."),
+            0.94
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=estate_doc_id, chunk_index=1,
-                              chunk_content="Trust structures and estate tax minimization approaches."),
-            score=0.89
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=estate_doc_id, chunk_index=1,
+                         chunk_content="Trust structures and estate tax minimization approaches."),
+            0.89
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=tax_doc_id, chunk_index=0,
-                              chunk_content="Estate tax considerations for high-net-worth families."),
-            score=0.76
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=tax_doc_id, chunk_index=0,
+                         chunk_content="Estate tax considerations for high-net-worth families."),
+            0.76
         ),
-        ChunkSearchResult(
-            chunk=DocumentChunk(id=uuid4(), document_id=investment_doc_id, chunk_index=0,
-                              chunk_content="Alternative investments complement traditional estate holdings."),
-            score=0.62
+        create_chunk_result(
+            DocumentChunk(id=uuid4(), document_id=investment_doc_id, chunk_index=0,
+                         chunk_content="Alternative investments complement traditional estate holdings."),
+            0.62
         ),
     ]
 
@@ -440,11 +450,11 @@ async def test_search_wealth_management_scenario(document_search_service, mock_c
     # Assert
     assert len(results) == 3
     # Estate planning document should rank first with highest score
-    assert results[0].document.title == "Estate Planning Strategy - Johnson Family"
-    assert results[0].score == 0.94
+    assert results[0].item.title == "Estate Planning Strategy - Johnson Family"
+    assert results[0].value == 0.94
     # Tax document should be second
-    assert results[1].document.title == "Tax Optimization Report 2024"
-    assert results[1].score == 0.76
+    assert results[1].item.title == "Tax Optimization Report 2024"
+    assert results[1].value == 0.76
     # Investment document should be third
-    assert results[2].document.title == "Alternative Investments Portfolio"
-    assert results[2].score == 0.62
+    assert results[2].item.title == "Alternative Investments Portfolio"
+    assert results[2].value == 0.62

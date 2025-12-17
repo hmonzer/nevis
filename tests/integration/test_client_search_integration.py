@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from pydantic.v1 import EmailStr
 
+from src.app.config import ClientSearchSettings
 from src.app.core.domain.models import Client, SearchRequest
 from src.app.core.services.client_search_service import ClientSearchService
 from src.app.infrastructure.client_search_repository import ClientSearchRepository
@@ -33,7 +34,8 @@ async def unit_of_work(clean_database):
 @pytest_asyncio.fixture
 async def client_search_service(client_search_repository):
     """Create a client search service with default threshold."""
-    return ClientSearchService(client_search_repository, pg_trgm_threshold=0.1)
+    settings = ClientSearchSettings(trgm_threshold=0.1)
+    return ClientSearchService(client_search_repository, settings=settings)
 
 
 @pytest_asyncio.fixture
@@ -106,16 +108,16 @@ async def test_search_investment_banker(client_search_service, wealth_management
 
     # Assert - Jonathan Sterling should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Jonathan"
-    assert results[0].client.last_name == "Sterling"
-    assert "Investment Banker" in results[0].client.description
+    assert results[0].item.first_name == "Jonathan"
+    assert results[0].item.last_name == "Sterling"
+    assert "Investment Banker" in results[0].item.description
 
     # Verify score is valid
-    assert 0.0 <= results[0].score <= 1.0
+    assert 0.0 <= results[0].value <= 1.0
 
     # Verify results are ordered by score descending
     for i in range(len(results) - 1):
-        assert results[i].score >= results[i + 1].score
+        assert results[i].value >= results[i + 1].value
 
 
 @pytest.mark.asyncio
@@ -127,10 +129,10 @@ async def test_search_wealth_management(client_search_service, wealth_management
 
     # Assert - Elizabeth Chen should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Elizabeth"
-    assert results[0].client.last_name == "Chen"
-    assert "Wealth Management" in results[0].client.description
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Elizabeth"
+    assert results[0].item.last_name == "Chen"
+    assert "Wealth Management" in results[0].item.description
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -142,10 +144,10 @@ async def test_search_real_estate(client_search_service, wealth_management_clien
 
     # Assert - Robert Patterson should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Robert"
-    assert results[0].client.last_name == "Patterson"
-    assert "Real Estate" in results[0].client.description
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Robert"
+    assert results[0].item.last_name == "Patterson"
+    assert "Real Estate" in results[0].item.description
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -157,13 +159,13 @@ async def test_search_technology_sector(client_search_service, wealth_management
 
     # Assert - Michael Torres (tech executive) should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Michael"
-    assert results[0].client.last_name == "Torres"
-    assert "Technology" in results[0].client.description
+    assert results[0].item.first_name == "Michael"
+    assert results[0].item.last_name == "Torres"
+    assert "Technology" in results[0].item.description
 
     # Verify all scores are valid
     for result in results:
-        assert 0.0 <= result.score <= 1.0
+        assert 0.0 <= result.value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -175,10 +177,10 @@ async def test_search_portfolio_manager(client_search_service, wealth_management
 
     # Assert - Sarah Goldman should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Sarah"
-    assert results[0].client.last_name == "Goldman"
-    assert "Portfolio Manager" in results[0].client.description
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Sarah"
+    assert results[0].item.last_name == "Goldman"
+    assert "Portfolio Manager" in results[0].item.description
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -190,9 +192,9 @@ async def test_search_by_company_domain(client_search_service, wealth_management
 
     # Assert - Elizabeth Chen should be found (morganstanley.com email)
     assert len(results) > 0
-    assert results[0].client.first_name == "Elizabeth"
-    assert "morganstanley.com" in results[0].client.email
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Elizabeth"
+    assert "morganstanley.com" in results[0].item.email
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -204,9 +206,9 @@ async def test_search_by_first_name(client_search_service, wealth_management_cli
 
     # Assert - Sarah Goldman should be found
     assert len(results) > 0
-    assert results[0].client.first_name == "Sarah"
-    assert results[0].client.last_name == "Goldman"
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Sarah"
+    assert results[0].item.last_name == "Goldman"
+    assert 0.0 <= results[0].value <= 1.0
 
 
 @pytest.mark.asyncio
@@ -219,7 +221,7 @@ async def test_search_respects_configured_threshold(client_search_service, wealt
     # Assert - All results should have scores >= configured threshold (0.1)
     assert len(results) > 0
     for result in results:
-        assert result.score >= 0.1, f"Score {result.score} should be >= configured threshold 0.1"
+        assert result.value >= 0.1, f"Score {result.value} should be >= configured threshold 0.1"
 
 
 @pytest.mark.asyncio
@@ -249,7 +251,7 @@ async def test_search_no_matches(client_search_service, wealth_management_client
     results = await client_search_service.search(request)
 
     # Assert - Should return empty list or very low scores
-    assert len(results) == 0 or all(result.score < 0.2 for result in results)
+    assert len(results) == 0 or all(result.value < 0.2 for result in results)
 
 
 @pytest.mark.asyncio
@@ -261,8 +263,8 @@ async def test_search_multi_keyword_query(client_search_service, wealth_manageme
 
     # Assert - Sarah Goldman (hedge fund portfolio manager) should rank highest
     assert len(results) > 0
-    assert results[0].client.first_name == "Sarah"
-    assert results[0].client.last_name == "Goldman"
-    assert "hedge fund" in results[0].client.description
-    assert "Portfolio Manager" in results[0].client.description
-    assert 0.0 <= results[0].score <= 1.0
+    assert results[0].item.first_name == "Sarah"
+    assert results[0].item.last_name == "Goldman"
+    assert "hedge fund" in results[0].item.description
+    assert "Portfolio Manager" in results[0].item.description
+    assert 0.0 <= results[0].value <= 1.0
