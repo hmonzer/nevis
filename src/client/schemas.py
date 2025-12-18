@@ -76,6 +76,14 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentDownloadResponse(BaseModel):
+    """Response schema for document download URL."""
+    id: UUID
+    title: str
+    download_url: str = Field(..., description="Pre-signed S3 URL for downloading the document")
+    expires_in: int = Field(..., description="URL expiration time in seconds")
+
+
 class SearchResultTypeEnum(str, Enum):
     """Type of entity in a search result."""
     CLIENT = "CLIENT"

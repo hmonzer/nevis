@@ -177,6 +177,7 @@ The API will be available at `http://localhost:8000`.**
 | `/api/v1/clients/{client_id}/documents/` | POST | Upload a document for a client |
 | `/api/v1/clients/{client_id}/documents/` | GET | List all documents for a client |
 | `/api/v1/clients/{client_id}/documents/{document_id}` | GET | Get a specific document |
+| `/api/v1/clients/{client_id}/documents/{document_id}/download` | GET | Get pre-signed S3 URL for document download |
 | `/api/v1/search/` | GET | Unified search across clients and documents |
 | `/health` | GET | Health check endpoint |
 

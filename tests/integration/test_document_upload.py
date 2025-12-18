@@ -271,3 +271,130 @@ async def test_document_response_includes_summary_field(nevis_client):
     # Retrieve and verify summary field exists in response schema
     retrieved_doc = await nevis_client.get_document(client_response.id, uploaded_doc.id)
     assert hasattr(retrieved_doc, 'summary') or 'summary' in retrieved_doc.model_fields
+
+
+# =============================================================================
+# Document Download Integration Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_get_document_download_url(nevis_client, s3_storage):
+    """Test getting a pre-signed download URL for a document."""
+    # Create client
+    client_request = CreateClientRequest(
+        first_name="Download", last_name="Test",
+        email=EmailStr("download.test@test.com"), description="Test client"
+    )
+    client_response = await nevis_client.create_client(client_request)
+
+    # Upload document
+    doc_content = "This is test content for download URL generation."
+    doc_request = CreateDocumentRequest(
+        title="Download Test Document",
+        content=doc_content
+    )
+    uploaded_doc = await nevis_client.upload_document(client_response.id, doc_request)
+
+    # Get download URL
+    download_response = await nevis_client.get_document_download_url(
+        client_response.id, uploaded_doc.id
+    )
+
+    # Verify response structure
+    assert download_response.id == uploaded_doc.id
+    assert download_response.title == "Download Test Document"
+    assert download_response.download_url is not None
+    assert isinstance(download_response.download_url, str)
+    assert download_response.expires_in == 3600  # Default expiration
+    # Verify URL contains the S3 key
+    assert uploaded_doc.s3_key in download_response.download_url
+
+
+@pytest.mark.asyncio
+async def test_get_document_download_url_not_found(nevis_client):
+    """Test that 404 is returned for non-existent document."""
+    import httpx
+    from typing import cast
+
+    # Create client
+    client_request = CreateClientRequest(
+        first_name="NotFound", last_name="Test",
+        email=EmailStr("notfound.test@test.com"), description="Test client"
+    )
+    client_response = await nevis_client.create_client(client_request)
+
+    # Try to get download URL for non-existent document
+    non_existent_doc_id = uuid4()
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await nevis_client.get_document_download_url(
+            client_response.id, non_existent_doc_id
+        )
+
+    error = cast(httpx.HTTPStatusError, exc_info.value)
+    assert error.response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_download_document_after_search(nevis_client, s3_storage, document_service):
+    """
+    Integration test: Search for a document and download its content.
+
+    This tests the full workflow:
+    1. Create client and upload document
+    2. Process document (to make it searchable)
+    3. Search for the document
+    4. Get download URL from search result
+    5. Verify the download URL is valid
+    """
+    # Create client with searchable description
+    client_request = CreateClientRequest(
+        first_name="Searchable", last_name="Client",
+        email=EmailStr("searchable.client@test.com"),
+        description="Client interested in retirement planning"
+    )
+    client_response = await nevis_client.create_client(client_request)
+
+    # Upload document with unique searchable content
+    unique_term = f"retirement_planning_{uuid4().hex[:8]}"
+    doc_content = f"""
+    Retirement Planning Guide for {unique_term}
+
+    This comprehensive guide covers essential retirement planning strategies
+    including 401k optimization, IRA contributions, and Social Security benefits.
+    """
+    doc_request = CreateDocumentRequest(
+        title=f"Retirement Guide {unique_term}",
+        content=doc_content
+    )
+    uploaded_doc = await nevis_client.upload_document(client_response.id, doc_request)
+
+    # Process the document to create searchable chunks
+    await document_service.process_document(uploaded_doc.id, doc_content)
+
+    # Search for the document
+    search_results = await nevis_client.search(query=unique_term, top_k=5)
+
+    # Find the document in search results
+    document_results = [
+        r for r in search_results
+        if r.type.value == "DOCUMENT" and r.entity.id == uploaded_doc.id
+    ]
+    assert len(document_results) >= 1, "Document should appear in search results"
+
+    # Get the document from search result
+    found_document = document_results[0].entity
+
+    # Get download URL for the found document
+    download_response = await nevis_client.get_document_download_url(
+        found_document.client_id, found_document.id
+    )
+
+    # Verify download URL response
+    assert download_response.id == uploaded_doc.id
+    assert download_response.download_url is not None
+    assert download_response.expires_in > 0
+
+    # Verify the S3 content is still accessible via direct S3 access
+    content = await s3_storage.download_text_content(uploaded_doc.s3_key)
+    assert unique_term in content

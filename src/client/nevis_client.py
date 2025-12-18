@@ -8,6 +8,7 @@ from src.client.schemas import (
     ClientResponse,
     CreateDocumentRequest,
     DocumentResponse,
+    DocumentDownloadResponse,
     SearchResultResponse,
 )
 
@@ -145,6 +146,28 @@ class NevisClient:
         )
         response.raise_for_status()
         return [DocumentResponse(**doc) for doc in response.json()]
+
+    async def get_document_download_url(
+        self, client_id: UUID, document_id: UUID
+    ) -> DocumentDownloadResponse:
+        """
+        Get a pre-signed URL for downloading document content.
+
+        Args:
+            client_id: UUID of the client
+            document_id: UUID of the document
+
+        Returns:
+            DocumentDownloadResponse with pre-signed S3 URL
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        response: Response = await self.client.get(
+            f"/api/v1/clients/{client_id}/documents/{document_id}/download"
+        )
+        response.raise_for_status()
+        return DocumentDownloadResponse(**response.json())
 
     async def search(
         self,

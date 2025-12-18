@@ -218,3 +218,30 @@ class S3BlobStorage:
             raise RuntimeError(
                 f"Failed to check existence of S3 key {key}: {str(e)}"
             ) from e
+
+    async def generate_presigned_url(self, key: str, expiration: int = 3600) -> str:
+        """
+        Generate a pre-signed URL for downloading an object from S3.
+
+        Args:
+            key: S3 object key (path) to generate URL for
+            expiration: URL expiration time in seconds (default: 1 hour)
+
+        Returns:
+            Pre-signed URL for downloading the object
+
+        Raises:
+            RuntimeError: If URL generation fails
+        """
+        try:
+            url = await asyncio.to_thread(
+                self.client.generate_presigned_url,
+                "get_object",
+                Params={"Bucket": self.settings.bucket_name, "Key": key},
+                ExpiresIn=expiration,
+            )
+            return url
+        except ClientError as e:
+            raise RuntimeError(
+                f"Failed to generate pre-signed URL for S3 key {key}: {str(e)}"
+            ) from e

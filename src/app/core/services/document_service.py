@@ -177,3 +177,36 @@ class DocumentService:
             raise EntityNotFound("Client", client_id)
 
         return await self.document_repository.get_by_client_id(client_id)
+
+    async def get_document_download_url(
+        self, document_id: UUID, client_id: UUID, expiration: int = 3600
+    ) -> str:
+        """
+        Generate a pre-signed URL for downloading document content from S3.
+
+        Args:
+            document_id: ID of the document
+            client_id: ID of the client owner
+            expiration: URL expiration time in seconds (default: 1 hour)
+
+        Returns:
+            Pre-signed URL for downloading the document
+
+        Raises:
+            EntityNotFound: If document not found for the given client
+            RuntimeError: If URL generation fails
+        """
+        document = await self.document_repository.get_client_document_by_id(
+            document_id, client_id
+        )
+        if not document:
+            raise EntityNotFound("Document", document_id)
+
+        try:
+            url = await self.blob_storage.generate_presigned_url(
+                document.s3_key, expiration=expiration
+            )
+            return url
+        except Exception as e:
+            logger.error(f"Failed to generate pre-signed URL for document {document_id}: {e}")
+            raise RuntimeError(f"Failed to generate download URL: {e}") from e
