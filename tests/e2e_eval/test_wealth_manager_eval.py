@@ -12,8 +12,6 @@ from pathlib import Path
 import pytest
 
 from src.eval import EvaluationConfig
-from src.eval.data_setup import load_eval_suite
-
 
 # Directory containing evaluation data files
 DATA_DIR = Path(__file__).parent / "data"
@@ -38,7 +36,7 @@ def get_dataset_id(dataset_path: str) -> str:
     EVAL_DATASETS,
     ids=get_dataset_id,
 )
-async def test_wealth_manager_eval(eval_runner, dataset_file: str):
+async def test_wealth_manager_eval(caplog, eval_runner, dataset_file: str):
     """
     E2E evaluation of search API using synthetic wealth management data.
 
@@ -56,16 +54,18 @@ async def test_wealth_manager_eval(eval_runner, dataset_file: str):
     4. Compares search results against expected results using IR metrics
     5. Asserts that at least one use case succeeded
     """
+
+    # Raise log level just to keep summary output clean. For debugging, comment the below line.
+    caplog.set_level("ERROR")
+
     # Load the evaluation suite
     data_path = DATA_DIR / dataset_file
     if not data_path.exists():
         pytest.skip(f"Dataset file not found: {data_path}")
 
-    suite = load_eval_suite(data_path)
-
     # Run evaluation using the eval runner fixture
     config = EvaluationConfig(top_k=5, verbose=True)
-    result = await eval_runner.run_suite(suite, config)
+    result = await eval_runner.run_from_file(data_path, config)
 
     # Assertions
     assert len(result.results) > 0, f"All use cases failed for {dataset_file} - no valid metrics collected"
