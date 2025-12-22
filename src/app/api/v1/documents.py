@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from dependency_injector.wiring import Provide, inject
 
 from src.app.containers import Container
@@ -11,11 +11,11 @@ from src.app.logging import get_logger
 
 DEFAULT_URL_EXPIRATION = 3600  # 1 hour
 
-router = APIRouter(prefix="/clients/{client_id}/documents", tags=["documents"])
+router = APIRouter(tags=["documents"])
 logger = get_logger(__name__)
 
 
-@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/clients/{client_id}/documents/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def create_document(
     client_id: UUID,
@@ -64,7 +64,7 @@ async def create_document(
     return to_document_response(document)
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/clients/{client_id}/documents/{document_id}", response_model=DocumentResponse)
 @inject
 async def get_document(
     client_id: UUID,
@@ -95,7 +95,7 @@ async def get_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
-@router.get("/{document_id}/download", response_model=DocumentDownloadResponse)
+@router.get("/clients/{client_id}/documents/{document_id}/download", response_model=DocumentDownloadResponse)
 @inject
 async def get_document_download_url(
     client_id: UUID,
@@ -141,7 +141,7 @@ async def get_document_download_url(
         )
 
 
-@router.get("/", response_model=list[DocumentResponse])
+@router.get("/clients/{client_id}/documents/", response_model=list[DocumentResponse])
 @inject
 async def list_client_documents(
     client_id: UUID,
@@ -166,3 +166,17 @@ async def list_client_documents(
     except EntityNotFound as e:
         logger.error(f"Client not found when listing documents: {e}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/documents", response_model=list[DocumentResponse])
+@inject
+async def get_all_documents(document_ids: list[UUID] = Query(...), document_service: DocumentService = Depends(Provide[Container.document_service])) -> list[DocumentResponse]:
+    """
+    Fetch all documents by their IDs.
+    Args:
+         document_ids: list of document UUIDs
+    Returns:
+        list of documents
+    """
+    documents = await document_service.get_documents(document_ids)
+    return [to_document_response(doc) for doc in documents]

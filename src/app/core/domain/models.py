@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from src.shared import time_utils
+
 
 class Client(BaseModel):
     """Domain model for Client used in business logic."""
@@ -15,7 +17,7 @@ class Client(BaseModel):
     last_name: str = Field(..., min_length=1, description="Last name cannot be blank")
     email: EmailStr = Field(..., description="Email address is required")
     description: str | None = None
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
+    created_at: datetime = Field(default_factory=time_utils.utc, description="Creation timestamp")
 
     model_config = {"from_attributes": True}
 
@@ -35,7 +37,7 @@ class Document(BaseModel):
     s3_key: str = Field(..., description="S3 path to the stored document")
     status: DocumentStatus = Field(default=DocumentStatus.PENDING, description="Processing status")
     summary: str | None = Field(default=None, description="AI-generated summary of the document")
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
+    created_at: datetime = Field(default_factory=time_utils.utc, description="Creation timestamp")
 
     model_config = {"from_attributes": True}
 

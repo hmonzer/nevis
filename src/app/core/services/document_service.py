@@ -210,3 +210,14 @@ class DocumentService:
         except Exception as e:
             logger.error(f"Failed to generate pre-signed URL for document {document_id}: {e}")
             raise RuntimeError(f"Failed to generate download URL: {e}") from e
+
+    async def get_documents(self, document_ids: list[UUID]) -> list[Document]:
+        """
+        This method can be used in tests to get all documents by ids
+        Args:
+            document_ids: list of document ids
+        Returns:
+            List of documents. Empty list if none is found.
+        """
+        documents = await self.document_repository.get_by_ids(document_ids)
+        return documents

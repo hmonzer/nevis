@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from pydantic.v1 import EmailStr
 
-from src.app.core.domain.models import Client
+from src.app.core.domain.models import Client, Document
 from src.app.core.services.document_service import DocumentService
 from src.shared.exceptions import EntityNotFound
 
@@ -117,3 +117,32 @@ async def test_get_document_download_url_wrong_client(
         )
 
     assert "Document" in str(exc_info.value)
+
+async def test_get_document_by_ids(document_service_instance, unit_of_work):
+    # given
+    client = Client(
+        id=uuid4(),
+        first_name="Download",
+        last_name="Test",
+        email=EmailStr("download.test@example.com"),
+        description="Test client for download functionality",
+    )
+    async with unit_of_work:
+        unit_of_work.add(client)
+
+    documents = [await document_service_instance.create_document(
+        client_id=client.id,
+        title=f"Download Test Document {i}",
+        content=f"This is test content for document {i}.",
+    ) for i in range(5)]
+
+    document_ids = [doc.id for doc in documents]
+
+    # when
+    result = await document_service_instance.get_documents(document_ids)
+
+    # then
+    assert len(documents) == 5
+    assert result == documents
+
+

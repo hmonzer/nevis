@@ -193,3 +193,18 @@ class NevisClient:
         )
         response.raise_for_status()
         return [SearchResultResponse(**result) for result in response.json()]
+
+    async def get_documents(self, document_ids: list[UUID]) -> list[DocumentResponse]:
+        """
+        Fetch all documents by their IDs.
+        Args:
+             document_ids: document IDs
+        Returns:
+            list of documents
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+
+        response = await self.client.get("/api/v1/documents", params={"document_ids": [str(id) for id in document_ids]})
+        response.raise_for_status()
+        return  [DocumentResponse(**doc) for doc in response.json()]
